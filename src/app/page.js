@@ -1,103 +1,197 @@
-import Image from "next/image";
+"use client";
+
+import React, { useState, useEffect, useRef } from "react";
+import {
+  Menu,
+  X,
+  FileText,
+} from "lucide-react";
+import InterviewSection from "@/app/components/InterviewSection";
+import SetupSection from "@/app/components/SetupSection";
+import ResultsSection from "@/app/components/ResultsSecion";
+import Sidebar from "@/app/components/Sidebar";
+import MobileMenu from "@/app/components/MobileMenu";
 
 export default function Home() {
-  return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm/6 text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2 tracking-[-.01em]">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-[family-name:var(--font-geist-mono)] font-semibold">
-              src/app/page.js
-            </code>
-            .
-          </li>
-          <li className="tracking-[-.01em]">
-            Save and see your changes instantly.
-          </li>
-        </ol>
+  const [activeSection, setActiveSection] = useState("setup");
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = useState(false);
+  const [hasResults, setHasResults] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
 
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:w-auto"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent font-medium text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 w-full sm:w-auto md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const interviewResults = localStorage.getItem("interviewResults");
+      const currentInterview = localStorage.getItem("currentInterview");
+      if (interviewResults) {
+        setHasResults(true);
+        setActiveSection(currentInterview ? "interview" : "results");
+      } else if (currentInterview) {
+        setActiveSection("interview");
+        setHasResults(false);
+      } else {
+        setActiveSection("setup");
+        setHasResults(false);
+      }
+      setIsLoading(false);
+    }
+
+    const style = document.createElement("style");
+    style.textContent = `
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(-10px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fadeIn 0.3s ease-out forwards; }
+      `;
+    document.head.appendChild(style);
+    return () => document.head.removeChild(style);
+  }, []);
+
+  const startInterview = () => {
+    setActiveSection("interview");
+    setHasResults(false);
+    setIsMobileMenuOpen(false);
+  };
+
+  const handleFinishInterview = () => {
+    if (typeof window !== "undefined") {
+      const currentInterviewString = localStorage.getItem("currentInterview");
+      if (!currentInterviewString) {
+        console.error("Finish Error: No current interview data.");
+        resetInterview();
+        return;
+      }
+      try {
+        const finishedInterviewData = JSON.parse(currentInterviewString);
+
+        const finalSummary = `Overall, the interview performance for the ${
+          finishedInterviewData.setupData.position || "role"
+        } showed promise. Key strengths were observed in areas like [Simulated Strength Area]. Areas for development include [Simulated Weakness Area] and reducing filler word usage. See detailed analysis per question below.`;
+        const finalSuggestions = [
+          "Review the detailed feedback for each question.",
+          "Practice structuring answers using the STAR method, especially for behavioral questions.",
+          "Record yourself practicing answers to identify and reduce filler words.",
+          "Tailor your examples more directly to the specific job requirements next time.",
+        ];
+
+        const totalDuration =
+          finishedInterviewData.questionAnalyses.length * 2 +
+          Math.floor(Math.random() * 5);
+
+        const aggregatedWordUsage = [
+          { word: "React", count: Math.floor(Math.random() * 10) + 5 },
+          { word: "project", count: Math.floor(Math.random() * 8) + 4 },
+          { word: "experience", count: Math.floor(Math.random() * 7) + 3 },
+          { word: "team", count: Math.floor(Math.random() * 6) + 2 },
+          { word: "challenge", count: Math.floor(Math.random() * 5) + 4 },
+          { word: "solution", count: Math.floor(Math.random() * 4) + 2 },
+          { word: "I", count: Math.floor(Math.random() * 15) + 10 },
+          { word: "like", count: Math.floor(Math.random() * 8) + 1 },
+          { word: "um", count: Math.floor(Math.random() * 5) + 0 },
+          { word: "basically", count: Math.floor(Math.random() * 4) + 0 },
+        ].filter((w) => w.count > 0);
+
+        const completedInterview = {
+          ...finishedInterviewData,
+          duration: `${totalDuration} min`,
+          summary: finalSummary,
+          wordUsage: aggregatedWordUsage,
+          aiSuggestions: finalSuggestions,
+        };
+
+        localStorage.setItem(
+          "interviewResults",
+          JSON.stringify(completedInterview)
+        );
+        localStorage.removeItem("currentInterview");
+        setHasResults(true);
+        setActiveSection("results");
+        setIsMobileMenuOpen(false);
+      } catch (error) {
+        console.error("Error finalizing interview:", error);
+        resetInterview();
+      }
+    }
+  };
+
+  const resetInterview = () => {
+    if (typeof window !== "undefined") {
+      localStorage.removeItem("interviewResults");
+      localStorage.removeItem("currentInterview");
+      localStorage.removeItem("interviewSetup");
+      setHasResults(false);
+      setActiveSection("setup");
+      setIsMobileMenuOpen(false);
+    }
+  };
+
+  const renderSection = () => {
+    if (isLoading)
+      return (
+        <div className="flex justify-center items-center min-h-screen text-white">
+          Initializing InterviewAI...
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
+      );
+    switch (activeSection) {
+      case "setup":
+        return <SetupSection startInterview={startInterview} />;
+      case "interview":
+        return (
+          <InterviewSection handleFinishInterview={handleFinishInterview} />
+        );
+      case "results":
+        return <ResultsSection resetInterview={resetInterview} />;
+      default:
+        return <SetupSection startInterview={startInterview} />;
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-900 to-indigo-900/30 text-gray-100 flex">
+      <Sidebar
+        activeSection={activeSection}
+        setActiveSection={setActiveSection}
+        hasResults={hasResults}
+        resetInterview={resetInterview}
+      />
+      <div className="flex flex-col flex-1 min-w-0">
+        {" "}
+        {/* Added min-w-0 for flex shrink */}
+        <header className="bg-gray-800/70 backdrop-blur-sm p-4 flex items-center justify-between lg:hidden border-b border-gray-700/50 sticky top-0 z-20">
+          <div className="flex items-center">
+            <FileText className="h-6 w-6 mr-2 text-indigo-400" />
+            <h1 className="text-xl font-bold text-white">InterviewAI</h1>
+          </div>
+          <button
+            className="text-gray-200 hover:text-white focus:outline-none p-1"
+            onClick={() => setIsMobileMenuOpen(!isMobileMenuOpen)}
+            aria-controls="mobile-menu"
+            aria-expanded={isMobileMenuOpen}
+          >
+            {!isMobileMenuOpen ? (
+              <Menu className="h-6 w-6" />
+            ) : (
+              <X className="h-6 w-6" />
+            )}
+          </button>
+        </header>
+        {isMobileMenuOpen && (
+          <MobileMenu
+            activeSection={activeSection}
+            setActiveSection={setActiveSection}
+            closeMobileMenu={() => setIsMobileMenuOpen(false)}
+            hasResults={hasResults}
+            resetInterview={resetInterview}
           />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
+        )}
+        {/* Added z-index lower than mobile menu */}
+        <main
+          className={`flex-1 transition-opacity duration-300 ${
+            isMobileMenuOpen
+              ? "opacity-30 lg:opacity-100 pointer-events-none lg:pointer-events-auto"
+              : "opacity-100"
+          } relative z-0`}
         >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
+          {renderSection()}
+        </main>
+      </div>
     </div>
   );
 }
