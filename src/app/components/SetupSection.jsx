@@ -1,14 +1,16 @@
 import { useState, useEffect } from "react";
-import { PenTool, ChevronDown, Play } from "lucide-react";
+import { PenTool, ChevronDown, Play, AlertCircle } from "lucide-react";
 
 const SetupSection = ({ startInterview }) => {
   const [formData, setFormData] = useState({
     instructions: "",
     position: "",
-    interviewer: "auto",
+    interviewer: "aura-asteria-en",
+    resume: "",
   });
   const [formErrors, setFormErrors] = useState({});
   const [submitAttempted, setSubmitAttempted] = useState(false);
+  const [isLoading, setIsLoading] = useState(false);
 
   useEffect(() => {
     const savedSetup = localStorage.getItem("interviewSetup");
@@ -38,36 +40,142 @@ const SetupSection = ({ startInterview }) => {
     return errors;
   };
 
-  const handleStartInterview = () => {
+  const extractTextFromPDF = async (base64DataUrl) => {
+    try {
+      // Extract base64 content (remove data URL prefix)
+      const base64 = base64DataUrl.split(",")[1];
+      const apiUrl = "https://v2.convertapi.com/convert/pdf/to/txt";
+      const apiKey = "secret_DZhUR7COXGqA3VxR";
+
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          Parameters: [
+            {
+              Name: "File",
+              FileValue: {
+                Name: "resume.pdf",
+                Data: base64,
+              },
+            },
+          ],
+        }),
+      });
+
+      if (!response.ok) {
+        throw new Error(`ConvertAPI request failed: ${response.statusText}`);
+      }
+
+      const data = await response.json();
+      const text = atob(data.Files[0].FileData); // Decode base64 text
+      return text;
+    } catch (error) {
+      console.error("Failed to extract text from PDF:", error);
+      return "";
+    }
+  };
+
+  const callGeminiAPI = async (prompt) => {
+    const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+    const apiUrl = "https://api.gemini.com/v2.5/flash/generate";
+
+    try {
+      const response = await fetch(apiUrl, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: JSON.stringify({
+          prompt,
+          max_tokens: 500,
+          temperature: 0.7,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Gemini API request failed");
+      const data = await response.json();
+      return data.questions || [];
+    } catch (error) {
+      console.error("Gemini API error:", error);
+      return [];
+    }
+  };
+
+  const handleStartInterview = async () => {
     setSubmitAttempted(true);
     const errors = validateForm();
     setFormErrors(errors);
     if (Object.keys(errors).length > 0) return;
 
-    const now = new Date();
-    const formattedDate = now.toLocaleDateString("en-US", {
-      year: "numeric",
-      month: "long",
-      day: "numeric",
-    });
-    const positionLabel =
-      positions.find((p) => p.id === formData.position)?.label || "AI";
+    setIsLoading(true);
+    try {
+      let resumeText = "";
+      if (formData.resume) {
+        resumeText = await extractTextFromPDF(formData.resume);
+      }
 
-    const interview = {
-      title: `${positionLabel} Interview`,
-      date: formattedDate,
-      duration: "0 min",
-      questions: [],
-      answers: {},
-      questionAnalyses: [],
-      setupData: { ...formData },
+      const positionLabel =
+        positions.find((p) => p.id === formData.position)?.label || "role";
+      if (!formData.instructions && !resumeText) {
+        throw new Error(
+          "Cannot generate questions: both instructions and resume are missing."
+        );
+      }
 
-      summary: "",
-      wordUsage: [],
-      aiSuggestions: [],
-    };
-    localStorage.setItem("currentInterview", JSON.stringify(interview));
-    startInterview();
+      const prompt = `
+        Generate 5 unique and relevant interview questions for a ${positionLabel} role.
+        
+        Context:
+        - Instructions: ${formData.instructions || "None"}
+        - Resume: ${resumeText || "None"}
+        
+        Return only a JSON array of 5 questions.
+      `;
+
+      const generatedQuestions = await callGeminiAPI(prompt);
+
+      if (
+        !Array.isArray(generatedQuestions) ||
+        generatedQuestions.length !== 5
+      ) {
+        throw new Error(
+          "Invalid response from Gemini. Expected an array of 5 questions."
+        );
+      }
+
+      const now = new Date();
+      const formattedDate = now.toLocaleDateString("en-US", {
+        year: "numeric",
+        month: "long",
+        day: "numeric",
+      });
+
+      const interview = {
+        title: `${positionLabel} Interview`,
+        date: formattedDate,
+        duration: "0 min",
+        questions: generatedQuestions,
+        answers: {},
+        questionAnalyses: [],
+        setupData: { ...formData, resumeText },
+        summary: "",
+        wordUsage: [],
+        aiSuggestions: [],
+      };
+
+      localStorage.setItem("currentInterview", JSON.stringify(interview));
+      startInterview();
+    } catch (error) {
+      console.error("Failed to start interview:", error);
+      setFormErrors({ general: error.message });
+    } finally {
+      setIsLoading(false);
+    }
   };
 
   const positions = [
@@ -80,13 +188,15 @@ const SetupSection = ({ startInterview }) => {
     { id: "data", label: "Data Scientist" },
     { id: "general", label: "General / Behavioral" },
   ];
+
   const interviewers = [
-    { id: "auto", label: "Auto (Default)" },
-    { id: "male1", label: "Male 1 - Professional" },
-    { id: "male2", label: "Male 2 - Conversational" },
-    { id: "female1", label: "Female 1 - Professional" },
-    { id: "female2", label: "Female 2 - Conversational" },
+    { id: "aura-asteria-en", label: "Asteria - Female, Professional" },
+    { id: "aura-luna-en", label: "Luna - Female, Conversational" },
+    { id: "aura-stella-en", label: "Stella - Female, Warm" },
+    { id: "aura-orion-en", label: "Orion - Male, Professional" },
+    { id: "aura-apollo-en", label: "Apollo - Male, Conversational" },
   ];
+
   const applyTemplate = (template) => {
     const updatedData = { ...formData, instructions: template };
     setFormData(updatedData);
@@ -108,6 +218,12 @@ const SetupSection = ({ startInterview }) => {
               Customize Your Interview
             </h3>
           </div>
+          {formErrors.general && (
+            <p className="mb-4 text-sm text-red-400 flex items-center">
+              <AlertCircle className="h-4 w-4 mr-1" />
+              {formErrors.general}
+            </p>
+          )}
           <div className="mb-6">
             <label
               htmlFor="instructions"
@@ -199,35 +315,72 @@ const SetupSection = ({ startInterview }) => {
                 </div>
               </div>
             </div>
-          </div>
-          <div className="mb-6">
-            <label className="block text-sm font-medium text-gray-300 mb-2">
-              Quick Instruction Templates
-            </label>
-            <div className="flex flex-wrap gap-2">
-              {["Technical React", "Behavioral Focus", "System Design"].map(
-                (label) => {
-                  let template = "";
-                  if (label === "Technical React")
-                    template =
-                      "Technical interview for a developer. Focus on React hooks, state management (Context API, Redux/Zustand), performance optimization, and testing.";
-                  if (label === "Behavioral Focus")
-                    template =
-                      "Behavioral interview. Focus on past projects using STAR method, team collaboration, handling disagreements, and problem-solving approaches.";
-                  if (label === "System Design")
-                    template =
-                      "System design interview. Evaluate architecture knowledge for scalable web apps, database choices, API design, caching, and trade-offs.";
-                  return (
-                    <button
-                      key={label}
-                      className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-md text-xs text-gray-300 transition duration-200"
-                      onClick={() => applyTemplate(template)}
-                    >
-                      {label}
-                    </button>
-                  );
-                }
+            <div>
+              <label
+                htmlFor="resume"
+                className="block text-sm font-medium text-gray-300 mb-2"
+              >
+                Upload Resume (PDF)
+              </label>
+              <input
+                type="file"
+                id="resume"
+                accept="application/pdf"
+                onChange={(e) => {
+                  const file = e.target.files[0];
+                  if (file && file.type === "application/pdf") {
+                    const reader = new FileReader();
+                    reader.onloadend = () => {
+                      const updatedData = {
+                        ...formData,
+                        resume: reader.result,
+                      };
+                      setFormData(updatedData);
+                      localStorage.setItem(
+                        "interviewSetup",
+                        JSON.stringify(updatedData)
+                      );
+                    };
+                    reader.readAsDataURL(file);
+                  }
+                }}
+                className="block w-full text-sm text-gray-300 file:bg-gray-700 file:border-0 file:py-2 file:px-4 file:rounded-md file:text-sm file:font-semibold file:text-white hover:file:bg-gray-600 cursor-pointer"
+              />
+              {formData.resume && (
+                <p className="mt-2 text-xs text-green-400">
+                  Resume uploaded successfully!
+                </p>
               )}
+            </div>
+            <div className="mb-6">
+              <label className="block text-sm font-medium text-gray-300 mb-2">
+                Quick Instruction Templates
+              </label>
+              <div className="flex flex-wrap gap-2">
+                {["Technical React", "Behavioral Focus", "System Design"].map(
+                  (label) => {
+                    let template = "";
+                    if (label === "Technical React")
+                      template =
+                        "Technical interview for a developer. Focus on React hooks, state management (Context API, Redux/Zustand), performance optimization, and testing.";
+                    if (label === "Behavioral Focus")
+                      template =
+                        "Behavioral interview. Focus on past projects using STAR method, team collaboration, handling disagreements, and problem-solving approaches.";
+                    if (label === "System Design")
+                      template =
+                        "System design interview. Evaluate architecture knowledge for scalable web apps, database choices, API design, caching, and trade-offs.";
+                    return (
+                      <button
+                        key={label}
+                        className="px-3 py-1 bg-gray-700 hover:bg-gray-600 rounded-md text-xs text-gray-300 transition duration-200"
+                        onClick={() => applyTemplate(template)}
+                      >
+                        {label}
+                      </button>
+                    );
+                  }
+                )}
+              </div>
             </div>
           </div>
         </div>
@@ -235,10 +388,15 @@ const SetupSection = ({ startInterview }) => {
           <button
             type="button"
             onClick={handleStartInterview}
-            className="inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg shadow-sm hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500 transition duration-200"
+            disabled={isLoading}
+            className={`inline-flex items-center px-6 py-3 bg-indigo-600 text-white font-medium rounded-lg shadow-sm transition duration-200 ${
+              isLoading
+                ? "opacity-50 cursor-not-allowed"
+                : "hover:bg-indigo-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-offset-gray-800 focus:ring-indigo-500"
+            }`}
           >
             <Play className="h-5 w-5 mr-2" />
-            Start Interview
+            {isLoading ? "Processing..." : "Start Interview"}
           </button>
         </div>
       </div>

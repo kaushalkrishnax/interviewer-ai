@@ -7,6 +7,7 @@ import {
   Square,
   ChevronLeft,
   ChevronRight,
+  Sparkles,
 } from "lucide-react";
 
 const InterviewSection = ({ handleFinishInterview }) => {
@@ -18,31 +19,16 @@ const InterviewSection = ({ handleFinishInterview }) => {
   const [elapsedTime, setElapsedTime] = useState(0);
   const timerRef = useRef(null);
   const transcriptRef = useRef("");
+  const audioRef = useRef(null);
 
   useEffect(() => {
     const interviewDataString = localStorage.getItem("currentInterview");
     if (interviewDataString) {
       try {
         const data = JSON.parse(interviewDataString);
-
-        const generatedQuestions = [
-          `Tell me about yourself and why you're interested in the ${
-            data.setupData.position || "role"
-          }.`,
-          `Can you describe your experience with key technologies relevant to a ${
-            data.setupData.position || "developer"
-          }? Please provide specific examples.`,
-          "How do you approach debugging complex issues in your code or projects?",
-          `Describe a challenging project related to ${
-            data.setupData.position || "your field"
-          } you worked on and how you overcame obstacles.`,
-          "Do you have any questions for us about the role or the company?",
-        ];
-        data.questions = generatedQuestions;
         setCurrentInterview(data);
-        localStorage.setItem("currentInterview", JSON.stringify(data));
       } catch (error) {
-        console.error("Failed to load or initialize interview", error);
+        console.error("Failed to load interview", error);
       }
     }
   }, []);
@@ -51,7 +37,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
     if (isRecording) {
       timerRef.current = setInterval(() => {
         setElapsedTime((prevTime) => prevTime + 1);
-
         transcriptRef.current += " lorem ipsum";
         setCurrentTranscript(transcriptRef.current.trim() + " [speaking...]");
       }, 1000);
@@ -72,8 +57,51 @@ const InterviewSection = ({ handleFinishInterview }) => {
         currentInterview.answers?.[currentQuestionIndex] || "";
       setCurrentTranscript(transcriptRef.current);
       setIsProcessing(false);
+      generateAndPlayAudio();
     }
   }, [currentQuestionIndex, currentInterview]);
+
+  const generateAndPlayAudio = async () => {
+    if (!currentInterview || !currentInterview.questions[currentQuestionIndex])
+      return;
+
+    const currentQText = currentInterview.questions[currentQuestionIndex];
+    const selectedVoice = currentInterview.setupData.interviewer || "aura-asteria-en";
+    const deepgramApiKey = "YOUR_DEEPGRAM_API_KEY"; // Replace with your Deepgram API key
+    const deepgramUrl = "https://api.deepgram.com/v1/speak";
+
+    try {
+      const response = await fetch(deepgramUrl, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${deepgramApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          text: currentQText,
+          voice: selectedVoice,
+        }),
+      });
+
+      if (!response.ok) throw new Error("Deepgram API request failed");
+
+      const audioBlob = await response.blob();
+      const audioUrl = URL.createObjectURL(audioBlob);
+
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.src = "";
+        URL.revokeObjectURL(audioRef.current.src);
+      }
+
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.play().catch((error) => {
+        console.error("Audio playback failed:", error);
+      });
+    } catch (error) {
+        console.error("Failed to generate audio:", error);
+    }
+  };
 
   const toggleRecording = () => {
     if (!isRecording) {
@@ -128,11 +156,9 @@ const InterviewSection = ({ handleFinishInterview }) => {
 
       if (newIndex >= 0 && newIndex < currentInterview.questions.length) {
         setCurrentQuestionIndex(newIndex);
-      } else {
-        console.log("Reached end or invalid index, preparing to finish.");
       }
     } catch (error) {
-      console.error("Error during AI analysis simulation:", error);
+      console.error("Error during AI analysis:", error);
     } finally {
       setIsProcessing(false);
     }
@@ -142,6 +168,11 @@ const InterviewSection = ({ handleFinishInterview }) => {
     if (isProcessing) return;
 
     await processAndChangeQuestion(-1);
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current.src = "";
+      URL.revokeObjectURL(audioRef.current.src);
+    }
     handleFinishInterview();
   };
 
@@ -171,7 +202,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
           Interview Session
         </h2>
         <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/30 rounded-xl p-6 mb-8 shadow-lg">
-          {/* Interviewer Info */}
           <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700/30">
             <div className="flex items-center">
               <div className="w-10 h-10 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0 border border-indigo-500/30">
@@ -205,7 +235,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
               End Interview
             </button>
           </div>
-          {/* Question Area */}
           <div className="mb-6">
             <div className="flex items-start">
               <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0 mt-1 border border-indigo-500/30">
@@ -221,7 +250,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
               </div>
             </div>
           </div>
-          {/* Response Area */}
           <div className="bg-gray-900/50 rounded-lg p-4 mb-6 border border-gray-700/30">
             <div className="flex justify-between items-center mb-4">
               <h4 className="text-md font-medium text-white">Your Response</h4>
@@ -289,13 +317,11 @@ const InterviewSection = ({ handleFinishInterview }) => {
             </div>
           </div>
         </div>
-        {/* Progress & Navigation */}
         <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/30 rounded-xl p-6 shadow-lg">
           <h4 className="text-md font-medium text-white mb-4">
             Interview Progress
           </h4>
           <div className="space-y-4">
-            {/* Progress Bar */}
             <div>
               <div className="flex justify-between text-xs text-gray-400 mb-2">
                 <span>
@@ -319,7 +345,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
                 ></div>
               </div>
             </div>
-            {/* Question Navigation Grid */}
             <div className="grid grid-cols-5 gap-2">
               {questions.map((_, index) => (
                 <button
@@ -345,7 +370,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
                 </button>
               ))}
             </div>
-            {/* Action Buttons */}
             <div className="flex justify-between items-center pt-4">
               <button
                 disabled={isProcessing}
