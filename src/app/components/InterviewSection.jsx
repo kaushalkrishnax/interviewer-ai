@@ -19,7 +19,7 @@ const DEEPGRAM_STT_URL =
 const RECORDING_MIMETYPE = "audio/webm";
 const SILENCE_TIMEOUT_MS = 8000;
 const NO_RESPONSE_TIMEOUT_MS = 10000;
-const MIN_RECORDING_DURATION_MS = 5000;
+const MIN_RECORDING_DURATION_MS = 20000;
 
 const InterviewSection = ({ handleFinishInterview }) => {
   const {
@@ -377,6 +377,14 @@ const InterviewSection = ({ handleFinishInterview }) => {
               ))}
           </p>
         </div>
+        <button
+          onClick={stopRecording}
+          className="w-40 mx-auto rounded-full bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white font-semibold py-2 px-4 shadow-md focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50 transform hover:scale-105"
+          disabled={!isRecording}
+          type="submit"
+        >
+          Submit Answer
+        </button>
 
         {error && (
           <div
@@ -385,20 +393,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
           >
             <AlertCircle className="h-6 w-6 mr-3 text-red-400 flex-shrink-0" />
             {error}
-          </div>
-        )}
-
-        {showRetry && (
-          <div className="flex justify-center animate-fade-in">
-            <button
-              onClick={retryQuestion}
-              className="flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-semibold rounded-lg transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-400"
-              disabled={isProcessing}
-              aria-label="Retry Question"
-            >
-              <RefreshCw className="h-4 w-4 mr-2 animate-spin-slow" />
-              Retry Question
-            </button>
           </div>
         )}
 
