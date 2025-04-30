@@ -12,7 +12,7 @@ import { useAppContext } from "../context/AppContext";
 
 const DEEPGRAM_API_KEY = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
 const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-1.5-flash:generateContent?key=${GEMINI_API_KEY}`;
 const DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak";
 const DEEPGRAM_STT_URL =
   "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true";
