@@ -1,14 +1,5 @@
 import React, { useState, useEffect } from "react";
-import {
-  ChevronDown,
-  ChevronUp,
-  AlertCircle,
-  RotateCcw,
-  Loader2,
-  Download,
-  Sparkles,
-  ArrowLeft
-} from "lucide-react";
+import { Download, RotateCcw, Loader2, ArrowLeft } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
 import jsPDF from "jspdf";
 
@@ -17,22 +8,16 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 
 const ResultsSection = ({ goToSetup }) => {
   const { questions, answers, formData } = useAppContext();
-  const [analyses, setAnalyses] = useState([]);
-  const [summary, setSummary] = useState("");
+  const [results, setResults] = useState({ analyses: [], summary: "", repeatedWords: [] });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [expandedSections, setExpandedSections] = useState({});
-  const [showConfirmBack, setShowConfirmBack] = useState(false);
 
   useEffect(() => {
     const loadCachedResults = () => {
       try {
-        const results = JSON.parse(
-          localStorage.getItem("interviewResults") || "{}"
-        );
-        if (results.questionAnalyses && results.summary) {
-          setAnalyses(results.questionAnalyses);
-          setSummary(results.summary);
+        const cached = JSON.parse(localStorage.getItem("interviewResults") || "{}");
+        if (cached.analyses?.length && cached.summary && cached.repeatedWords) {
+          setResults(cached);
           return true;
         }
         return false;
@@ -41,10 +26,9 @@ const ResultsSection = ({ goToSetup }) => {
         return false;
       }
     };
-    if (questions.length > 0) {
-      if (!loadCachedResults()) {
-        analyzeInterview();
-      }
+
+    if (questions.length > 0 && !loadCachedResults()) {
+      analyzeInterview();
     }
   }, [questions, answers, formData]);
 
@@ -52,88 +36,42 @@ const ResultsSection = ({ goToSetup }) => {
     setIsLoading(true);
     setError(null);
     try {
-      const questionAnalyses = await Promise.all(
-        questions.map(async (question, index) => {
-          const answer = answers[question] || "(No answer provided)";
-          const prompt = `
-            Analyze the following interview question and answer for a ${
-              formData.position || "role"
-            } role.
-            Question: "${question}"
-            Answer: "${answer}"
-            Instructions: ${formData.instructions || "None"}
-            Resume: ${formData.resumeText || "None"}
-            
-            Provide a VERY BRIEF analysis (max 2-3 sentences per section):
-            1. Key strengths in this answer
-            2. One specific suggestion for improvement (25 words max)
-            
-            Return the analysis as a JSON object with keys: strengths, improvement
-            Keep responses extremely concise - brevity is critical.
-          `;
-
-          const response = await fetch(GEMINI_API_URL, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: prompt }] }],
-              generationConfig: { responseMimeType: "application/json" },
-            }),
-          });
-
-          if (!response.ok) throw new Error("Gemini API request failed");
-          const data = await response.json();
-          const analysisText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (!analysisText)
-            throw new Error("Invalid analysis response structure");
-          const analysis = JSON.parse(analysisText);
-          return { question, answer, ...analysis };
-        })
-      );
-
-      const summaryPrompt = `
-        Provide a VERY CONCISE overall summary (max 2 sentences) of the interview for a ${
-          formData.position || "role"
-        } role.
-        Focus on just one strength and one improvement area based on the following:
-        Questions: ${questions.join("\n")}
-        Answers: ${Object.entries(answers)
-          .map(([q, a]) => `${q}: ${a}`)
-          .join("\n")}
+      const prompt = `
+        Analyze the following interview for a ${formData.position || "role"} role.
+        Questions and Answers:
+        ${questions.map((q, i) => `Q${i + 1}: ${q}\nA${i + 1}: ${answers[q] || "(No answer provided)"}`).join("\n")}
         Instructions: ${formData.instructions || "None"}
         Resume: ${formData.resumeText || "None"}
-        
-        Keep your response extremely brief - no more than 30 words total.
+
+        Provide:
+        1. Analysis for each question (max 2-3 sentences per section):
+           - Key strengths in the answer
+           - One specific suggestion for improvement (25 words max)
+           Return as an array of JSON objects with keys: question, answer, strengths, improvement
+        2. Overall summary (50 words max) highlighting one strength and one improvement area.
+        3. Repeated words: List the top 5 most frequently used words across all answers (excluding common stop words like "the", "and").
+
+        Return the response as a JSON object with keys: analyses, summary, repeatedWords
+        Keep all responses concise.
       `;
 
-      const summaryResponse = await fetch(GEMINI_API_URL, {
+      const response = await fetch(GEMINI_API_URL, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          contents: [{ parts: [{ text: summaryPrompt }] }],
-          generationConfig: { responseMimeType: "text/plain" },
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "application/json" },
         }),
       });
 
-      if (!summaryResponse.ok)
-        throw new Error("Gemini API summary request failed");
-      const summaryData = await summaryResponse.json();
-      const interviewSummary =
-        summaryData?.candidates?.[0]?.content?.parts?.[0]?.text;
-      if (!interviewSummary)
-        throw new Error("Invalid summary response structure");
+      if (!response.ok) throw new Error("Gemini API request failed");
+      const data = await response.json();
+      const resultText = data?.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (!resultText) throw new Error("Invalid response structure");
+      const result = JSON.parse(resultText);
 
-      setAnalyses(questionAnalyses);
-      setSummary(interviewSummary);
-
-      // Update local storage
-      localStorage.setItem(
-        "interviewResults",
-        JSON.stringify({
-          questionAnalyses,
-          summary: interviewSummary,
-        })
-      );
+      setResults(result);
+      localStorage.setItem("interviewResults", JSON.stringify(result));
     } catch (err) {
       setError(`Failed to analyze interview: ${err.message}`);
     } finally {
@@ -141,234 +79,139 @@ const ResultsSection = ({ goToSetup }) => {
     }
   };
 
-  const toggleSection = (index) => {
-    setExpandedSections((prev) => ({ ...prev, [index]: !prev[index] }));
-  };
-
-  const handleBackToSetup = () => {
-    setShowConfirmBack(true);
-  };
-
-  const confirmBackToSetup = () => {
-    if (typeof goToSetup === "function") {
-      goToSetup();
-      setShowConfirmBack(false);
-    } else {
-      console.warn("goToSetup is not a function.");
-      setError("Failed to return to setup. Please try again.");
-      setShowConfirmBack(false);
-    }
-  };
-
   const retryAnalysis = () => {
-    setAnalyses([]);
-    setSummary("");
+    setResults({ analyses: [], summary: "", repeatedWords: [] });
     localStorage.removeItem("interviewResults");
     analyzeInterview();
   };
 
   const downloadReport = () => {
     const doc = new jsPDF();
-    const pageHeight = doc.internal.pageSize.height;
-    const lineSpacing = 8;
-    const sectionSpacing = 12;
-    const maxWidth = 160;
     let y = 20;
-
-    const addLine = (text, bold = false, extraSpace = false) => {
-      const lines = doc.splitTextToSize(text, maxWidth);
+    const addText = (text, bold = false, size = 12, spaceAfter = 8) => {
+      doc.setFontSize(size);
+      doc.setFont("helvetica", bold ? "bold" : "normal");
+      const lines = doc.splitTextToSize(text, 170);
       lines.forEach((line) => {
-        if (y + lineSpacing > pageHeight - 10) {
+        if (y + spaceAfter > doc.internal.pageSize.height - 10) {
           doc.addPage();
           y = 20;
         }
-        doc.setFont("helvetica", bold ? "bold" : "normal");
         doc.text(line, 20, y);
-        y += lineSpacing;
+        y += spaceAfter;
       });
-      if (extraSpace) y += sectionSpacing;
     };
 
-    doc.setFontSize(16);
-    addLine(`Interview Results for ${formData.position || "Role"}`, true, true);
+    addText(`Interview Results for ${formData.position || "Role"}`, true, 16, 10);
+    addText("Overall Summary", true);
+    addText(results.summary || "No summary available.", false, 12, 10);
+    addText("Repeated Words", true);
+    addText(results.repeatedWords.length ? results.repeatedWords.join(", ") : "None identified.", false, 12, 10);
 
-    doc.setFontSize(12);
-    addLine("Overall Summary", true);
-    addLine(summary || "No summary available.", false, true);
-
-    analyses.forEach((analysis, index) => {
-      addLine(`Question ${index + 1}`, true);
-      addLine(`Q: ${analysis.question}`);
-      addLine(`A: ${analysis.answer}`);
-      addLine(`Strengths: ${analysis.strengths}`);
-      addLine(`Improvement: ${analysis.improvement}`, false, true);
+    results.analyses.forEach((analysis, i) => {
+      addText(`Question ${i + 1}`, true);
+      addText(`Q: ${analysis.question}`);
+      addText(`A: ${analysis.answer}`);
+      addText(`Strengths: ${analysis.strengths}`);
+      addText(`Improvement: ${analysis.improvement}`, false, 12, 10);
     });
 
     doc.save(`Interview_Results_${formData.position || "Role"}.pdf`);
   };
 
   return (
-    <section className="min-h-screen p-4 md:p-6 lg:p-8 flex flex-col items-center justify-center bg-gradient-to-br from-purple-900 via-indigo-950 to-black text-white">
-      <div className="w-full max-w-4xl bg-gray-900/80 backdrop-blur-xl border border-purple-500/30 rounded-xl shadow-2xl p-5 md:p-8 flex flex-col space-y-6 transform transition-all duration-500">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-          <h2 className="text-2xl md:text-3xl font-bold text-purple-300 flex items-center">
-            <Sparkles className="h-6 w-6 mr-3 text-purple-400" />
-            Interview Insights
-          </h2>
-          <div className="flex flex-wrap gap-2">
+    <section className="min-h-screen p-6 bg-gray-100 flex flex-col items-center">
+      <div className="w-full max-w-3xl bg-white rounded-lg shadow-lg p-6 space-y-6">
+        {/* Header */}
+        <div className="flex justify-between items-center">
+          <h2 className="text-2xl font-bold text-gray-800">Interview Insights</h2>
+          <div className="flex gap-2">
             <button
               onClick={downloadReport}
-              className="flex items-center px-3 py-1.5 bg-gradient-to-r from-purple-600 to-indigo-600 text-white text-sm font-medium rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-              aria-label="Download Report"
+              className="flex items-center px-4 py-2 bg-blue-600 text-white rounded-md hover:bg-blue-700 transition"
+              title="Download as PDF"
             >
-              <Download className="h-4 w-4 mr-2" />
-              Download PDF
+              <Download className="h-4 w-4 mr-2" /> PDF
             </button>
             <button
               onClick={retryAnalysis}
-              className="flex items-center px-3 py-1.5 bg-amber-600 text-white text-sm font-medium rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-              aria-label="Retry Analysis"
+              className="flex items-center px-4 py-2 bg-yellow-600 text-white rounded-md hover:bg-yellow-700 transition"
               disabled={isLoading}
+              title="Retry Analysis"
             >
-              <RotateCcw className="h-4 w-4 mr-2" />
-              Retry
+              <RotateCcw className="h-4 w-4 mr-2" /> Retry
             </button>
             <button
-              onClick={handleBackToSetup}
-              className="flex items-center px-3 py-1.5 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-300 shadow-md hover:shadow-lg transform hover:-translate-y-0.5"
-              aria-label="Back to Setup"
+              onClick={goToSetup}
+              className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-md hover:bg-gray-700 transition"
+              title="Back to Setup"
             >
-              <ArrowLeft className="h-4 w-4 mr-2" />
-              Back
+              <ArrowLeft className="h-4 w-4 mr-2" /> Back
             </button>
           </div>
         </div>
 
+        {/* Error Message */}
         {error && (
-          <div
-            className="p-4 bg-red-900/50 border-l-4 border-red-500 rounded-lg text-sm text-red-200 flex items-center shadow-md"
-            role="alert"
-          >
-            <AlertCircle className="h-5 w-5 mr-3 text-red-400 flex-shrink-0" />
+          <div className="p-4 bg-red-100 text-red-700 rounded-md flex items-center">
             <span>{error}</span>
           </div>
         )}
 
+        {/* Loading State */}
         {isLoading ? (
-          <div className="flex flex-col items-center justify-center py-12 text-sm text-gray-300">
-            <Loader2 className="h-10 w-10 mb-4 animate-spin text-purple-400" />
-            <p className="text-center">Analyzing your interview responses<br />Just a moment...</p>
+          <div className="flex flex-col items-center py-12">
+            <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
+            <p className="mt-4 text-gray-600">Analyzing responses...</p>
           </div>
         ) : (
           <div className="space-y-6">
-            {summary && (
-              <div className="p-5 bg-indigo-900/30 backdrop-blur-sm border border-purple-500/30 rounded-lg shadow-lg">
-                <h3 className="text-lg font-semibold text-purple-300 mb-3 flex items-center">
-                  <Sparkles className="h-4 w-4 mr-2 text-purple-400" />
-                  Overall Summary
-                </h3>
-                <p className="text-gray-200 leading-relaxed">
-                  {summary}
-                </p>
+            {/* Summary Card */}
+            {results.summary && (
+              <div className="p-4 bg-blue-50 rounded-md border border-blue-200">
+                <h3 className="text-lg font-semibold text-blue-800 mb-2">Summary</h3>
+                <p className="text-gray-700">{results.summary}</p>
               </div>
             )}
 
+            {/* Repeated Words Card */}
+            {results.repeatedWords.length > 0 && (
+              <div className="p-4 bg-green-50 rounded-md border border-green-200">
+                <h3 className="text-lg font-semibold text-green-800 mb-2">Repeated Words</h3>
+                <p className="text-gray-700">Common words: {results.repeatedWords.join(", ")}</p>
+                <p className="text-sm text-gray-600 mt-1">Tip: Vary word choice to enhance clarity and impact.</p>
+              </div>
+            )}
+
+            {/* Question Analysis Cards */}
             <div className="space-y-4">
-              {analyses.map((analysis, index) => (
-                <div
-                  key={index}
-                  className="bg-gray-900/70 border border-purple-500/20 rounded-lg overflow-hidden shadow-lg hover:shadow-purple-900/20 transition-all duration-300"
-                >
-                  <button
-                    onClick={() => toggleSection(index)}
-                    className="w-full px-5 py-4 flex justify-between items-center text-left focus:outline-none focus:ring-2 focus:ring-purple-500/40 focus:ring-inset"
-                    aria-expanded={expandedSections[index]}
-                    aria-controls={`analysis-${index}`}
-                  >
-                    <div className="flex-1 truncate pr-4">
-                      <span className="font-medium text-purple-200">
-                        Q{index + 1}: {analysis.question.length > 70 
-                          ? analysis.question.substring(0, 70) + "..." 
-                          : analysis.question}
-                      </span>
+              {results.analyses.map((analysis, index) => (
+                <div key={index} className="p-4 bg-white rounded-md border border-gray-200 shadow-sm">
+                  <h3 className="text-lg font-semibold text-gray-800 mb-2">
+                    Question {index + 1}: {analysis.question}
+                  </h3>
+                  <div className="space-y-3">
+                    <div>
+                      <p className="text-sm font-medium text-gray-600">Your Answer</p>
+                      <p className="text-gray-700">{analysis.answer}</p>
                     </div>
-                    <div className="flex-shrink-0 text-gray-400">
-                      {expandedSections[index] ? (
-                        <ChevronUp className="h-5 w-5" />
-                      ) : (
-                        <ChevronDown className="h-5 w-5" />
-                      )}
-                    </div>
-                  </button>
-                  
-                  {expandedSections[index] && (
-                    <div
-                      id={`analysis-${index}`}
-                      className="px-5 pb-5 pt-1 space-y-4 animate-fade-in border-t border-purple-500/20"
-                    >
-                      <div>
-                        <h4 className="text-sm font-medium text-purple-300 mb-1">
-                          Your Answer
-                        </h4>
-                        <p className="text-sm text-gray-300 bg-black/20 p-3 rounded-md">
-                          {analysis.answer}
-                        </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div className="p-3 bg-green-50 rounded-md">
+                        <p className="text-sm font-medium text-green-700">Strengths</p>
+                        <p className="text-gray-700">{analysis.strengths}</p>
                       </div>
-                      
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                        <div className="bg-emerald-900/20 p-4 rounded-lg border border-emerald-500/20">
-                          <h4 className="text-sm font-medium text-emerald-300 mb-2">
-                            Strengths
-                          </h4>
-                          <p className="text-sm text-gray-300">
-                            {analysis.strengths}
-                          </p>
-                        </div>
-                        
-                        <div className="bg-amber-900/20 p-4 rounded-lg border border-amber-500/20">
-                          <h4 className="text-sm font-medium text-amber-300 mb-2">
-                            Improvement
-                          </h4>
-                          <p className="text-sm text-gray-300">
-                            {analysis.improvement}
-                          </p>
-                        </div>
+                      <div className="p-3 bg-yellow-50 rounded-md">
+                        <p className="text-sm font-medium text-yellow-700">Improvement</p>
+                        <p className="text-gray-700">{analysis.improvement}</p>
                       </div>
                     </div>
-                  )}
+                  </div>
                 </div>
               ))}
             </div>
           </div>
         )}
       </div>
-
-      {showConfirmBack && (
-        <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-          <div className="bg-gray-900 p-6 rounded-xl border border-purple-500/30 max-w-md w-full shadow-2xl animate-fade-in">
-            <h3 className="text-xl font-semibold text-purple-300 mb-4">
-              Confirm Navigation
-            </h3>
-            <p className="text-gray-300 mb-6">
-              Are you sure you want to return to setup? Your current results will not be lost, but you'll need to reanalyze if you make changes.
-            </p>
-            <div className="flex justify-end gap-4">
-              <button
-                onClick={() => setShowConfirmBack(false)}
-                className="px-4 py-2 bg-gray-700 hover:bg-gray-600 text-white text-sm font-medium rounded-lg transition-all duration-300"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={confirmBackToSetup}
-                className="px-4 py-2 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white text-sm font-medium rounded-lg transition-all duration-300"
-              >
-                Confirm
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
     </section>
   );
 };
