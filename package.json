@@ -9,6 +9,8 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "framer-motion": "^12.9.2",
+    "jspdf": "^3.0.1",
     "lucide-react": "^0.503.0",
     "next": "15.3.1",
     "prop-types": "^15.8.1",

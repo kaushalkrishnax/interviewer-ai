@@ -1,422 +1,411 @@
-import { useState, useEffect, useRef } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
-  MessageSquare,
-  XCircle,
-  HelpCircle,
   Mic,
-  Square,
-  ChevronLeft,
-  ChevronRight,
-  Sparkles,
+  Loader2,
+  AlertCircle,
+  Power,
+  RefreshCw,
+  User,
+  Bot,
 } from "lucide-react";
+import { useAppContext } from "../context/AppContext";
+
+const DEEPGRAM_API_KEY = process.env.NEXT_PUBLIC_DEEPGRAM_API_KEY;
+const GEMINI_API_KEY = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
+const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+const DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak";
+const DEEPGRAM_STT_URL =
+  "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true";
+const RECORDING_MIMETYPE = "audio/webm";
+const SILENCE_TIMEOUT_MS = 8000;
+const NO_RESPONSE_TIMEOUT_MS = 10000;
+const MIN_RECORDING_DURATION_MS = 5000;
 
 const InterviewSection = ({ handleFinishInterview }) => {
-  const [currentInterview, setCurrentInterview] = useState(null);
-  const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
+  const {
+    formData,
+    questions,
+    setQuestions,
+    currentQuestion,
+    setCurrentQuestion,
+    answers,
+    setAnswers,
+    isLoading,
+  } = useAppContext();
   const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
-  const [currentTranscript, setCurrentTranscript] = useState("");
-  const [elapsedTime, setElapsedTime] = useState(0);
-  const timerRef = useRef(null);
-  const transcriptRef = useRef("");
+  const [transcript, setTranscript] = useState("");
+  const [error, setError] = useState(null);
+  const [showRetry, setShowRetry] = useState(false);
+  const mediaRecorderRef = useRef(null);
+  const audioChunksRef = useRef([]);
+  const streamRef = useRef(null);
   const audioRef = useRef(null);
+  const silenceTimerRef = useRef(null);
+  const noResponseTimerRef = useRef(null);
+  const lastSpokenQuestionRef = useRef(null);
+  const recordingStartTimeRef = useRef(null);
 
   useEffect(() => {
-    const interviewDataString = localStorage.getItem("currentInterview");
-    if (interviewDataString) {
-      try {
-        const data = JSON.parse(interviewDataString);
-        setCurrentInterview(data);
-      } catch (error) {
-        console.error("Failed to load interview", error);
+    if (
+      currentQuestion &&
+      !isLoading &&
+      !isSpeaking &&
+      currentQuestion !== lastSpokenQuestionRef.current
+    ) {
+      setError(null);
+      setTranscript("");
+      setShowRetry(false);
+      lastSpokenQuestionRef.current = currentQuestion;
+      speakQuestion(currentQuestion);
+    }
+  }, [currentQuestion, isLoading, isSpeaking]);
+
+  useEffect(() => {
+    return () => {
+      stopRecording();
+      if (streamRef.current) {
+        streamRef.current.getTracks().forEach((track) => track.stop());
+        streamRef.current = null;
       }
-    }
-  }, []);
-
-  useEffect(() => {
-    if (isRecording) {
-      timerRef.current = setInterval(() => {
-        setElapsedTime((prevTime) => prevTime + 1);
-        transcriptRef.current += " lorem ipsum";
-        setCurrentTranscript(transcriptRef.current.trim() + " [speaking...]");
-      }, 1000);
-    } else {
-      clearInterval(timerRef.current);
-      if (transcriptRef.current) {
-        setCurrentTranscript(transcriptRef.current.trim());
-      }
-    }
-    return () => clearInterval(timerRef.current);
-  }, [isRecording]);
-
-  useEffect(() => {
-    if (currentInterview) {
-      setIsRecording(false);
-      setElapsedTime(0);
-      transcriptRef.current =
-        currentInterview.answers?.[currentQuestionIndex] || "";
-      setCurrentTranscript(transcriptRef.current);
-      setIsProcessing(false);
-      generateAndPlayAudio();
-    }
-  }, [currentQuestionIndex, currentInterview]);
-
-  const generateAndPlayAudio = async () => {
-    if (!currentInterview || !currentInterview.questions[currentQuestionIndex])
-      return;
-
-    const currentQText = currentInterview.questions[currentQuestionIndex];
-    const selectedVoice = currentInterview.setupData.interviewer || "aura-asteria-en";
-    const deepgramApiKey = "YOUR_DEEPGRAM_API_KEY"; // Replace with your Deepgram API key
-    const deepgramUrl = "https://api.deepgram.com/v1/speak";
-
-    try {
-      const response = await fetch(deepgramUrl, {
-        method: "POST",
-        headers: {
-          Authorization: `Token ${deepgramApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          text: currentQText,
-          voice: selectedVoice,
-        }),
-      });
-
-      if (!response.ok) throw new Error("Deepgram API request failed");
-
-      const audioBlob = await response.blob();
-      const audioUrl = URL.createObjectURL(audioBlob);
-
       if (audioRef.current) {
         audioRef.current.pause();
-        audioRef.current.src = "";
-        URL.revokeObjectURL(audioRef.current.src);
+        audioRef.current = null;
       }
-
-      audioRef.current = new Audio(audioUrl);
-      audioRef.current.play().catch((error) => {
-        console.error("Audio playback failed:", error);
-      });
-    } catch (error) {
-        console.error("Failed to generate audio:", error);
-    }
-  };
-
-  const toggleRecording = () => {
-    if (!isRecording) {
-      transcriptRef.current = "";
-      setCurrentTranscript("");
-      setElapsedTime(0);
-      setIsRecording(true);
-    } else {
-      setIsRecording(false);
-    }
-  };
-
-  const processAndChangeQuestion = async (newIndex) => {
-    if (isProcessing || !currentInterview) return;
-
-    setIsProcessing(true);
-    setIsRecording(false);
-
-    const currentAnswer = transcriptRef.current.trim();
-    const currentQ = currentInterview.questions[currentQuestionIndex];
-
-    const updatedAnswers = {
-      ...currentInterview.answers,
-      [currentQuestionIndex]: currentAnswer,
+      clearTimeout(silenceTimerRef.current);
+      clearTimeout(noResponseTimerRef.current);
     };
-    currentInterview.answers = updatedAnswers;
+  }, []);
+
+  const speakQuestion = async (text) => {
+    if (!text) return;
+    setIsProcessing(true);
+    setIsSpeaking(true);
+    setError(null);
 
     try {
-      const analysisResult = await simulateAiAnalysis(currentQ, currentAnswer, {
-        questionNumber: currentQuestionIndex + 1,
-        ...currentInterview,
-      });
-
-      const existingAnalyses = currentInterview.questionAnalyses || [];
-      const analysisIndex = existingAnalyses.findIndex(
-        (a) => a.questionNumber === currentQuestionIndex + 1
-      );
-      if (analysisIndex > -1) {
-        existingAnalyses[analysisIndex] = analysisResult;
-      } else {
-        existingAnalyses.push(analysisResult);
-      }
-      currentInterview.questionAnalyses = existingAnalyses.sort(
-        (a, b) => a.questionNumber - b.questionNumber
+      const response = await fetch(
+        `${DEEPGRAM_TTS_URL}?model=${formData.interviewer}`,
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Token ${DEEPGRAM_API_KEY}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({ text }),
+        }
       );
 
-      localStorage.setItem(
-        "currentInterview",
-        JSON.stringify(currentInterview)
-      );
-      setCurrentInterview({ ...currentInterview });
+      if (!response.ok) throw new Error("Failed to generate audio");
+      const blob = await response.blob();
+      if (!blob.type.startsWith("audio/"))
+        throw new Error("Invalid audio response");
 
-      if (newIndex >= 0 && newIndex < currentInterview.questions.length) {
-        setCurrentQuestionIndex(newIndex);
-      }
-    } catch (error) {
-      console.error("Error during AI analysis:", error);
+      const audioUrl = URL.createObjectURL(blob);
+      audioRef.current = new Audio(audioUrl);
+      audioRef.current.onended = () => {
+        setIsSpeaking(false);
+        URL.revokeObjectURL(audioUrl);
+        startRecording();
+      };
+      await audioRef.current.play();
+    } catch (err) {
+      setError(`Audio playback failed: ${err.message}`);
+      setIsSpeaking(false);
+      startRecording();
     } finally {
       setIsProcessing(false);
     }
   };
 
-  const handleEndInterviewClick = async () => {
-    if (isProcessing) return;
+  const startRecording = async () => {
+    setError(null);
+    setShowRetry(false);
+    clearTimeout(noResponseTimerRef.current);
 
-    await processAndChangeQuestion(-1);
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+
+      audioChunksRef.current = [];
+      mediaRecorderRef.current = new MediaRecorder(stream, {
+        mimeType: RECORDING_MIMETYPE,
+      });
+
+      mediaRecorderRef.current.ondataavailable = (event) => {
+        if (event.data.size > 0) {
+          audioChunksRef.current.push(event.data);
+          clearTimeout(silenceTimerRef.current);
+          if (
+            Date.now() - recordingStartTimeRef.current >=
+            MIN_RECORDING_DURATION_MS
+          ) {
+            silenceTimerRef.current = setTimeout(
+              stopRecording,
+              SILENCE_TIMEOUT_MS
+            );
+          }
+        }
+      };
+
+      mediaRecorderRef.current.onstart = () => {
+        setIsRecording(true);
+        recordingStartTimeRef.current = Date.now();
+        noResponseTimerRef.current = setTimeout(() => {
+          stopRecording();
+          setShowRetry(true);
+          setError("No response detected. Retry the question?");
+          setIsRecording(false);
+        }, NO_RESPONSE_TIMEOUT_MS);
+      };
+
+      mediaRecorderRef.current.onstop = async () => {
+        setIsRecording(false);
+        clearTimeout(silenceTimerRef.current);
+        clearTimeout(noResponseTimerRef.current);
+
+        if (!audioChunksRef.current.length) {
+          setTranscript("");
+          await processResponse("");
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: RECORDING_MIMETYPE,
+        });
+        audioChunksRef.current = [];
+        await transcribeAudio(audioBlob);
+      };
+
+      mediaRecorderRef.current.onerror = () => {
+        setError("Recording failed. Please check your microphone.");
+        setIsRecording(false);
+        setIsProcessing(false);
+      };
+
+      mediaRecorderRef.current.start(500);
+    } catch (err) {
+      setError(
+        err.name === "NotAllowedError"
+          ? "Microphone access denied. Please allow access."
+          : "Microphone unavailable or access failed."
+      );
+      setIsRecording(false);
+    }
+  };
+
+  const stopRecording = () => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    clearTimeout(silenceTimerRef.current);
+  };
+
+  const transcribeAudio = async (audioBlob) => {
+    if (!audioBlob?.size) {
+      setTranscript("");
+      await processResponse("");
+      return;
+    }
+
+    setIsProcessing(true);
+    setError(null);
+
+    try {
+      const response = await fetch(DEEPGRAM_STT_URL, {
+        method: "POST",
+        headers: {
+          Authorization: `Token ${DEEPGRAM_API_KEY}`,
+          "Content-Type": audioBlob.type,
+        },
+        body: audioBlob,
+      });
+
+      if (!response.ok) throw new Error("Transcription failed");
+      const data = await response.json();
+      const text =
+        data.results?.channels?.[0]?.alternatives?.[0]?.transcript || "";
+      setTranscript(text);
+      await processResponse(text);
+    } catch (err) {
+      setError(`Transcription error: ${err.message}`);
+      setIsProcessing(false);
+    }
+  };
+
+  const processResponse = async (answer) => {
+    setIsProcessing(true);
+    if (currentQuestion) {
+      setAnswers((prev) => ({ ...prev, [currentQuestion]: answer }));
+    }
+
+    const history = questions
+      .map((q) => `Interviewer: ${q}\nYou: ${answers[q] || "(No answer)"}`)
+      .join("\n\n");
+    const prompt = `You are an interviewer. History:\n${history}\nPrevious question: "${currentQuestion}"\nAnswer: "${
+      answer || "(No answer)"
+    }"\nAsk the next relevant question. Return only the question.`;
+
+    try {
+      const response = await fetch(GEMINI_API_URL, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          contents: [{ parts: [{ text: prompt }] }],
+          generationConfig: { responseMimeType: "text/plain" },
+        }),
+      });
+
+      if (!response.ok) throw new Error("Failed to generate question");
+      const data = await response.json();
+      const nextQuestion =
+        data?.candidates?.[0]?.content?.parts?.[0]?.text ||
+        "Can you share more about your experience?";
+      setQuestions((prev) => [...prev, nextQuestion]);
+      setCurrentQuestion(nextQuestion);
+    } catch (err) {
+      setError("Failed to generate next question");
+      setIsProcessing(false);
+    }
+  };
+
+  const retryQuestion = () => {
+    setError(null);
+    setShowRetry(false);
+    setTranscript("");
+    stopRecording();
+    clearTimeout(noResponseTimerRef.current);
+    clearTimeout(silenceTimerRef.current);
+    setIsRecording(false);
+    if (currentQuestion) speakQuestion(currentQuestion);
+  };
+
+  const handleEndInterview = () => {
+    stopRecording();
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach((track) => track.stop());
+      streamRef.current = null;
+    }
     if (audioRef.current) {
       audioRef.current.pause();
-      audioRef.current.src = "";
-      URL.revokeObjectURL(audioRef.current.src);
+      audioRef.current = null;
     }
+    clearTimeout(silenceTimerRef.current);
+    clearTimeout(noResponseTimerRef.current);
     handleFinishInterview();
   };
 
-  const formatTime = (seconds) => {
-    const mins = Math.floor(seconds / 60);
-    const secs = seconds % 60;
-    return `${mins.toString().padStart(2, "0")}:${secs
-      .toString()
-      .padStart(2, "0")}`;
-  };
-
-  if (!currentInterview) {
-    return (
-      <div className="flex justify-center items-center min-h-screen p-10 text-white">
-        Loading Interview...
-      </div>
-    );
-  }
-
-  const questions = currentInterview.questions;
-  const currentQText = questions[currentQuestionIndex];
-
   return (
-    <section id="interview" className="min-h-screen p-6 lg:p-10">
-      <div className="max-w-4xl mx-auto">
-        <h2 className="text-2xl font-bold mb-8 text-white">
-          Interview Session
-        </h2>
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/30 rounded-xl p-6 mb-8 shadow-lg">
-          <div className="flex items-center justify-between mb-6 pb-4 border-b border-gray-700/30">
-            <div className="flex items-center">
-              <div className="w-10 h-10 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0 border border-indigo-500/30">
-                <MessageSquare className="h-5 w-5 text-indigo-400" />
-              </div>
-              <div className="ml-3">
-                <p className="text-md font-semibold text-white">
-                  AI Interviewer
-                </p>
-                <p className="text-xs text-gray-400">
-                  {currentInterview.setupData.position
-                    ? currentInterview.setupData.position
-                        .charAt(0)
-                        .toUpperCase() +
-                      currentInterview.setupData.position.slice(1) +
-                      " Specialist"
-                    : "Hiring Team"}
-                </p>
-              </div>
+    <section className="min-h-screen p-4 lg:p-8 flex flex-col items-center justify-center bg-gradient-to-br from-gray-900 via-indigo-950 to-black text-white animate-gradient-bg">
+      <div className="w-full max-w-4xl bg-gray-800/80 backdrop-blur-xl border border-indigo-500/30 rounded-2xl shadow-2xl p-6 md:p-10 flex flex-col space-y-8 transform transition-all duration-500">
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4">
+          <h2 className="text-2xl md:text-3xl font-extrabold text-indigo-300 flex items-center animate-fade-in">
+            <Bot className="h-6 w-6 mr-3 text-indigo-400 animate-pulse" />
+            AI Interview Session
+          </h2>
+          <button
+            onClick={handleEndInterview}
+            className="flex items-center px-3 py-1.5 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-red-400"
+            disabled={isProcessing && !isRecording}
+            aria-label="End Interview"
+          >
+            <Power className="h-4 w-4 mr-2" />
+            End Interview
+          </button>
+        </div>
+
+        <div className="text-center text-sm text-gray-300 animate-fade-in">
+          <p>
+            Question{" "}
+            {questions.length > 0 ? questions.indexOf(currentQuestion) + 1 : 1}{" "}
+            of {questions.length || 1}
+          </p>
+        </div>
+
+        <div className="text-center h-10 flex items-center justify-center">
+          {isProcessing && !isRecording && (
+            <div className="flex items-center text-sm text-gray-200 animate-pulse">
+              <Loader2 className="h-5 w-5 mr-2 animate-spin text-indigo-400" />
+              Processing...
             </div>
+          )}
+          {isSpeaking && (
+            <div className="flex items-center text-sm text-indigo-300 animate-pulse">
+              <Bot className="h-5 w-5 mr-2 animate-bounce" />
+              Interviewer Speaking...
+            </div>
+          )}
+          {isRecording && (
+            <div className="flex items-center text-sm text-green-400 animate-pulse">
+              <Mic className="h-5 w-5 mr-2 text-red-500 animate-ping" />
+              Recording Your Answer...
+            </div>
+          )}
+        </div>
+
+        <div className="p-6 bg-gray-900/70 border border-indigo-600/40 rounded-xl min-h-[120px] flex items-center shadow-inner transform transition-all duration-300 hover:shadow-xl animate-fade-in">
+          <Bot
+            size={28}
+            className="mr-4 text-indigo-400 flex-shrink-0 animate-spin-slow"
+          />
+          <p className="text-lg md:text-xl text-gray-100 font-semibold leading-relaxed">
+            {currentQuestion || "Initializing interview..."}
+          </p>
+        </div>
+
+        <div
+          className="p-6 bg-gray-800/70 border rounded-xl min-h-[120px] flex items-center shadow-inner transition-all duration-300 hover:shadow-xl animate-fade-in"
+          style={{
+            borderColor: isRecording
+              ? "rgba(74, 222, 128, 0.5)"
+              : "rgba(22, 163, 74, 0.4)",
+          }}
+        >
+          <User
+            size={28}
+            className="mr-4 text-green-400 flex-shrink-0 animate-pulse"
+          />
+          <p className="text-lg md:text-xl text-gray-200 italic leading-relaxed">
+            {transcript ||
+              (isRecording ? (
+                <span className="text-green-300">Recording...</span>
+              ) : (
+                <span className="text-gray-400">
+                  Your answer will appear here
+                </span>
+              ))}
+          </p>
+        </div>
+
+        {error && (
+          <div
+            className="p-4 bg-red-900/50 border border-red-600/50 rounded-xl text-sm text-red-200 flex items-center shadow-md animate-shake"
+            role="alert"
+          >
+            <AlertCircle className="h-6 w-6 mr-3 text-red-400 flex-shrink-0" />
+            {error}
+          </div>
+        )}
+
+        {showRetry && (
+          <div className="flex justify-center animate-fade-in">
             <button
-              onClick={handleEndInterviewClick}
+              onClick={retryQuestion}
+              className="flex items-center px-4 py-2 bg-yellow-600 hover:bg-yellow-500 text-white text-sm font-semibold rounded-lg transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50 transform hover:scale-105 focus:outline-none focus:ring-2 focus:ring-yellow-400"
               disabled={isProcessing}
-              className={`px-3 py-1 rounded-md text-xs transition flex items-center ${
-                isProcessing
-                  ? "bg-gray-600 text-gray-400 cursor-not-allowed"
-                  : "bg-red-500/20 hover:bg-red-500/30 text-red-300"
-              }`}
+              aria-label="Retry Question"
             >
-              <XCircle className="h-4 w-4 inline mr-1" />
-              End Interview
+              <RefreshCw className="h-4 w-4 mr-2 animate-spin-slow" />
+              Retry Question
             </button>
           </div>
-          <div className="mb-6">
-            <div className="flex items-start">
-              <div className="w-8 h-8 rounded-full bg-indigo-600/20 flex items-center justify-center shrink-0 mt-1 border border-indigo-500/30">
-                <HelpCircle className="h-4 w-4 text-indigo-400" />
-              </div>
-              <div className="ml-4 flex-1">
-                <p className="text-xs uppercase tracking-wide text-gray-500 mb-2">
-                  Question {currentQuestionIndex + 1} of {questions.length}
-                </p>
-                <h3 className="text-lg font-medium text-white mb-2">
-                  {currentQText}
-                </h3>
-              </div>
-            </div>
-          </div>
-          <div className="bg-gray-900/50 rounded-lg p-4 mb-6 border border-gray-700/30">
-            <div className="flex justify-between items-center mb-4">
-              <h4 className="text-md font-medium text-white">Your Response</h4>
-              <div className="flex space-x-2 items-center">
-                {isProcessing && (
-                  <div className="px-2 py-1 bg-yellow-500/20 rounded text-xs text-yellow-300 flex items-center">
-                    <Sparkles className="h-3 w-3 mr-1 animate-spin" />
-                    Processing...
-                  </div>
-                )}
-                {isRecording && (
-                  <div className="px-2 py-1 bg-green-500/20 rounded text-xs text-green-300 flex items-center">
-                    <span className="w-2 h-2 bg-green-400 rounded-full mr-1.5 animate-pulse"></span>
-                    Recording
-                  </div>
-                )}
-                <span className="text-xs text-gray-400 font-mono">
-                  {formatTime(elapsedTime)}
-                </span>
-              </div>
-            </div>
-            <div className="flex justify-center mb-6">
-              <button
-                disabled={isProcessing}
-                className={`w-16 h-16 ${
-                  isRecording
-                    ? "bg-red-600 hover:bg-red-700"
-                    : "bg-indigo-600 hover:bg-indigo-700"
-                } ${
-                  isProcessing ? "opacity-50 cursor-not-allowed" : ""
-                } rounded-full flex items-center justify-center text-white focus:outline-none transition transform hover:scale-105 active:scale-95 shadow-lg`}
-                onClick={toggleRecording}
-              >
-                {isRecording ? (
-                  <Square className="h-7 w-7" />
-                ) : (
-                  <Mic className="h-8 w-8" />
-                )}
-              </button>
-            </div>
-            <div className="bg-gray-800/70 rounded-lg p-4 mb-3 border border-gray-700/30 min-h-[8rem]">
-              {currentTranscript ? (
-                <p className="text-gray-300 leading-relaxed">
-                  {currentTranscript}
-                </p>
-              ) : (
-                <p className="text-gray-500 italic text-sm">
-                  {isRecording
-                    ? "Speak now... (simulated transcription)"
-                    : "Click the microphone to record your answer."}
-                </p>
-              )}
-              {isRecording && (
-                <div className="flex items-center mt-2">
-                  <div className="animate-pulse flex">
-                    <div className="h-2 w-2 bg-indigo-400 rounded-full mr-1"></div>
-                    <div className="h-2 w-2 bg-indigo-400 rounded-full mr-1"></div>
-                    <div className="h-2 w-2 bg-indigo-400 rounded-full"></div>
-                  </div>
-                  <span className="ml-2 text-xs text-gray-400">
-                    Listening...
-                  </span>
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-        <div className="bg-gray-800/50 backdrop-blur-sm border border-gray-700/30 rounded-xl p-6 shadow-lg">
-          <h4 className="text-md font-medium text-white mb-4">
-            Interview Progress
-          </h4>
-          <div className="space-y-4">
-            <div>
-              <div className="flex justify-between text-xs text-gray-400 mb-2">
-                <span>
-                  Question {currentQuestionIndex + 1}/{questions.length}
-                </span>
-                <span>
-                  {Math.round(
-                    ((currentQuestionIndex + 1) / questions.length) * 100
-                  )}
-                  % Complete
-                </span>
-              </div>
-              <div className="w-full bg-gray-700 h-2 rounded-full overflow-hidden">
-                <div
-                  className="bg-indigo-500 h-full rounded-full transition-all duration-500 ease-out"
-                  style={{
-                    width: `${
-                      ((currentQuestionIndex + 1) / questions.length) * 100
-                    }%`,
-                  }}
-                ></div>
-              </div>
-            </div>
-            <div className="grid grid-cols-5 gap-2">
-              {questions.map((_, index) => (
-                <button
-                  key={index}
-                  disabled={isProcessing}
-                  className={`${
-                    index === currentQuestionIndex
-                      ? "bg-indigo-500/20 border-indigo-500/30 text-indigo-300"
-                      : "bg-gray-700/50 border-gray-600/30 text-gray-400 hover:bg-gray-700"
-                  } ${
-                    isProcessing ? "opacity-50 cursor-not-allowed" : ""
-                  } p-2 rounded text-center cursor-pointer transition border`}
-                  onClick={() => processAndChangeQuestion(index)}
-                >
-                  <span className="text-xs font-medium">Q{index + 1}</span>
-                  <div
-                    className={`mt-1 w-full h-1 ${
-                      index === currentQuestionIndex
-                        ? "bg-indigo-500"
-                        : "bg-gray-600"
-                    } rounded`}
-                  ></div>
-                </button>
-              ))}
-            </div>
-            <div className="flex justify-between items-center pt-4">
-              <button
-                disabled={isProcessing}
-                className={`px-4 py-2 bg-transparent border border-gray-600 hover:border-gray-500 rounded-md text-sm transition flex items-center ${
-                  isProcessing
-                    ? "text-gray-500 cursor-not-allowed"
-                    : "text-gray-300"
-                }`}
-                onClick={() => setIsRecording(false)}
-              >
-                <Square className="h-4 w-4 mr-2" /> Stop Response
-              </button>
-              <div className="flex space-x-3">
-                <button
-                  disabled={isProcessing || currentQuestionIndex === 0}
-                  className={`px-4 py-2 rounded-md text-sm transition flex items-center ${
-                    isProcessing || currentQuestionIndex === 0
-                      ? "bg-gray-700/50 text-gray-500 cursor-not-allowed"
-                      : "bg-gray-700 hover:bg-gray-600 text-gray-300"
-                  }`}
-                  onClick={() =>
-                    processAndChangeQuestion(currentQuestionIndex - 1)
-                  }
-                >
-                  <ChevronLeft className="h-4 w-4 mr-1" />
-                  Previous
-                </button>
-                <button
-                  disabled={
-                    isProcessing ||
-                    currentQuestionIndex === questions.length - 1
-                  }
-                  className={`px-4 py-2 rounded-md text-sm transition flex items-center ${
-                    isProcessing ||
-                    currentQuestionIndex === questions.length - 1
-                      ? "bg-indigo-600/50 text-gray-300 cursor-not-allowed"
-                      : "bg-indigo-600 hover:bg-indigo-700 text-white"
-                  }`}
-                  onClick={() =>
-                    processAndChangeQuestion(currentQuestionIndex + 1)
-                  }
-                >
-                  Next <ChevronRight className="h-4 w-4 ml-1" />
-                </button>
-              </div>
-            </div>
-          </div>
+        )}
+
+        <div className="pt-6 text-center text-xs text-gray-400 animate-fade-in">
+          {!isRecording && !isSpeaking && !isProcessing && !showRetry && (
+            <p>Ready for your next answer</p>
+          )}
         </div>
       </div>
     </section>

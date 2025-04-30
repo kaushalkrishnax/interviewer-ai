@@ -1,5 +1,5 @@
 import React from "react";
-import { Trash2 } from "lucide-react";
+import { Trash2, Settings, Mic, Activity } from "lucide-react";
 
 const MobileMenu = ({
   activeSection,

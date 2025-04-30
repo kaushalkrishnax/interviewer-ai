@@ -1,3 +1,4 @@
+import { AppProvider } from "./context/AppContext";
 import "./globals.css";
 
 export const metadata = {
@@ -19,7 +20,7 @@ export default function RootLayout({ children }) {
         />
       </head>
       <body className="font-sans antialiased dark:bg-black dark:text-white">
-        {children}
+        <AppProvider>{children}</AppProvider>
       </body>
     </html>
   );
