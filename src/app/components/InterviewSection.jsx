@@ -245,7 +245,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
       .join("\n\n");
     const prompt = `You are an interviewer. History:\n${history}\nPrevious question: "${currentQuestion}"\nAnswer: "${
       answer || "(No answer)"
-    }"\nAsk the next relevant question. Return only the question.`;
+    }"\nAsk the next relevant question. Return only the question. Question length not more than 20 words.`;
 
     try {
       const response = await fetch(GEMINI_API_URL, {
