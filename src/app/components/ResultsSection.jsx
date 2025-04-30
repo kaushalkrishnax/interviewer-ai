@@ -138,8 +138,8 @@ const ResultsSection = ({ goToSetup }) => {
         <div className="flex justify-between items-center flex-col md:flex-row gap-4">
           <div>
             <h1 className="text-3xl font-bold text-purple-400">Interview Results</h1>
-            <h2 className="text-lg text-gray-300">{formData.position || "Role"} Interview</h2>
-            <p className="text-sm text-gray-400">Completed on {new Date().toLocaleDateString()} · {32} min</p>
+            <h2 className="text-lg text-gray-300">{formData.position.charAt(0).toUpperCase() + formData.position.slice(1) || "Role"} Interview</h2>
+            <p className="text-sm text-gray-400">Completed on {new Date().toLocaleDateString()}</p>
           </div>
           <div className="flex gap-2">
             <button
@@ -148,13 +148,6 @@ const ResultsSection = ({ goToSetup }) => {
               title="Download Report"
             >
               <Download className="h-5 w-5 mr-2" /> Download Report
-            </button>
-            <button
-              onClick={() => alert("Share functionality not implemented")}
-              className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-lg hover:shadow-gray-500/50"
-              title="Share"
-            >
-              <Share2 className="h-5 w-5 mr-2" /> Share
             </button>
           </div>
         </div>
@@ -258,7 +251,7 @@ const ResultsSection = ({ goToSetup }) => {
             <div className="space-y-4">
               {results.analyses.map((analysis, index) => (
                 <div key={index} className="p-4 bg-gray-700 rounded-lg border border-gray-600 shadow-md hover:shadow-lg transition-shadow duration-300">
-                  <h3 className="text-lg font-semibold text-gray-100 mb-2">Question {index + 1}: {analysis.question}</h3>
+                  <h3 className="text-md font-semibold text-gray-100 mb-2">{analysis.question}</h3>
                   <div className="space-y-3">
                     <div>
                       <p className="text-sm font-medium text-gray-400">Your Answer</p>
