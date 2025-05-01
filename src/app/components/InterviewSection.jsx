@@ -101,8 +101,6 @@ const InterviewSection = ({ handleFinishInterview }) => {
 
       if (!response.ok) throw new Error("Failed to generate audio");
       const blob = await response.blob();
-      if (!blob.type.startsWith("audio/"))
-        throw new Error("Invalid audio response");
 
       const audioUrl = URL.createObjectURL(blob);
       audioRef.current = new Audio(audioUrl);
