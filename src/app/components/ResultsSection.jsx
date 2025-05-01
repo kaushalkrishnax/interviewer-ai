@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { Download, RotateCcw, Loader2, ArrowLeft, Share2 } from "lucide-react";
+import { Download, RotateCcw, Loader2, ArrowLeft } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
 import jsPDF from "jspdf";
 
@@ -8,15 +8,21 @@ const GEMINI_API_URL = `https://generativelanguage.googleapis.com/v1beta/models/
 
 const ResultsSection = ({ goToSetup }) => {
   const { questions, answers, formData } = useAppContext();
-  const [results, setResults] = useState({ analyses: [], summary: "", repeatedWords: [], scores: { overall: 0, technical: 0, communication: 0 } });
+  const [results, setResults] = useState({
+    analyses: [],
+    summary: "",
+    scores: { overall: 0, technical: 0, communication: 0 },
+  });
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState(null);
 
   useEffect(() => {
     const loadCachedResults = () => {
       try {
-        const cached = JSON.parse(localStorage.getItem("interviewResults") || "{}");
-        if (cached.analyses?.length && cached.summary && cached.repeatedWords && cached.scores) {
+        const cached = JSON.parse(
+          localStorage.getItem("interviewResults") || "{}"
+        );
+        if (cached.analyses?.length && cached.summary && cached.scores) {
           setResults(cached);
           return true;
         }
@@ -37,27 +43,33 @@ const ResultsSection = ({ goToSetup }) => {
     setError(null);
     try {
       const prompt = `
-        Analyze the following interview for a ${formData.position || "role"} role.
+        Analyze the following interview for a ${
+          formData.position || "role"
+        } role.
         Questions and Answers:
-        ${questions.map((q, i) => `Q${i + 1}: ${q}\nA${i + 1}: ${answers[q] || "(No answer provided)"}`).join("\n")}
+        ${questions
+          .map(
+            (q, i) =>
+              `Q${i + 1}: ${q}\nA${i + 1}: ${
+                answers[q] || "(No answer provided)"
+              }`
+          )
+          .join("\n")}
         Instructions: ${formData.instructions || "None"}
         Resume: ${formData.resumeText || "None"}
 
         Provide:
-        1. Analysis for each question (max 3-4 sentences per section):
-           - Key strengths in the answer
-           - Specific weaknesses or gaps
-           - One actionable suggestion for improvement (25 words max)
-           Return as an array of JSON objects with keys: question, answer, strengths, weaknesses, suggestion
+        1. Analysis for each question:
+           - One clear, actionable improvement suggestion (40 words max)
+           Return as an array of JSON objects with keys: question, answer, improvement
         2. Scores (0-100):
            - Overall score with brief justification
            - Technical skills score with brief justification
            - Communication score with brief justification
            Return as a JSON object with keys: overall, technical, communication
-        3. Overall summary (70 words max) with one strength and one improvement area.
-        4. Repeated words: List the top 5 most frequently used words (excluding stop words like "the", "and").
+        3. Overall summary (70 words max) with key improvement areas.
 
-        Return the response as a JSON object with keys: analyses, scores, summary, repeatedWords
+        Return the response as a JSON object with keys: analyses, scores, summary
         Keep all responses concise.
       `;
 
@@ -86,7 +98,11 @@ const ResultsSection = ({ goToSetup }) => {
   };
 
   const retryAnalysis = () => {
-    setResults({ analyses: [], summary: "", repeatedWords: [], scores: { overall: 0, technical: 0, communication: 0 } });
+    setResults({
+      analyses: [],
+      summary: "",
+      scores: { overall: 0, technical: 0, communication: 0 },
+    });
     localStorage.removeItem("interviewResults");
     analyzeInterview();
   };
@@ -108,24 +124,30 @@ const ResultsSection = ({ goToSetup }) => {
       });
     };
 
-    addText(`Interview Results for ${formData.position || "Role"}`, true, 16, 10);
+    addText(
+      `Interview Results for ${formData.position || "Role"}`,
+      true,
+      16,
+      10
+    );
     addText(`Completed on ${new Date().toLocaleDateString()}`, false, 10, 10);
     addText("Scores", true);
     addText(`Overall: ${results.scores.overall}/100`, false, 12, 10);
     addText(`Technical: ${results.scores.technical}/100`, false, 12, 10);
-    addText(`Communication: ${results.scores.communication}/100`, false, 12, 10);
+    addText(
+      `Communication: ${results.scores.communication}/100`,
+      false,
+      12,
+      10
+    );
     addText("Summary", true);
     addText(results.summary || "No summary available.", false, 12, 10);
-    addText("Repeated Words", true);
-    addText(results.repeatedWords.length ? results.repeatedWords.join(", ") : "None identified.", false, 12, 10);
 
     results.analyses.forEach((analysis, i) => {
       addText(`Question ${i + 1}`, true);
       addText(`Q: ${analysis.question}`);
       addText(`A: ${analysis.answer}`);
-      addText(`Strengths: ${analysis.strengths}`);
-      addText(`Weaknesses: ${analysis.weaknesses}`);
-      addText(`Suggestion: ${analysis.suggestion}`, false, 12, 10);
+      addText(`Improvement: ${analysis.improvement}`, false, 12, 10);
     });
 
     doc.save(`Interview_Results_${formData.position || "Role"}.pdf`);
@@ -133,13 +155,21 @@ const ResultsSection = ({ goToSetup }) => {
 
   return (
     <section className="min-h-screen p-6 bg-gray-900 text-gray-100 flex flex-col items-center">
-      <div className="w-full max-w-4xl bg-gray-800 rounded-xl shadow-2xl p-6 space-y-6 border border-gray-700">
+      <div className="w-full max-w-4xl bg-gray-800 rounded-xl shadow-lg p-6 space-y-6 border border-gray-700">
         {/* Header */}
-        <div className="flex justify-between items-center flex-col md:flex-row gap-4">
+        <div className="flex justify-between items-center flex-col md:flex-row gap-4 border-b border-gray-700 pb-4">
           <div>
-            <h1 className="text-3xl font-bold text-purple-400">Interview Results</h1>
-            <h2 className="text-lg text-gray-300">{formData.position.charAt(0).toUpperCase() + formData.position.slice(1) || "Role"} Interview</h2>
-            <p className="text-sm text-gray-400">Completed on {new Date().toLocaleDateString()}</p>
+            <h1 className="text-3xl font-bold text-purple-400">
+              Interview Analysis
+            </h1>
+            <h2 className="text-lg text-gray-300">
+              {formData.position.charAt(0).toUpperCase() +
+                formData.position.slice(1) || "Role"}{" "}
+              Position
+            </h2>
+            <p className="text-sm text-gray-400">
+              Completed on {new Date().toLocaleDateString()}
+            </p>
           </div>
           <div className="flex gap-2">
             <button
@@ -147,7 +177,7 @@ const ResultsSection = ({ goToSetup }) => {
               className="flex items-center px-4 py-2 bg-purple-600 text-white rounded-lg hover:bg-purple-700 transition-all duration-200 shadow-lg hover:shadow-purple-500/50"
               title="Download Report"
             >
-              <Download className="h-5 w-5 mr-2" /> Download Report
+              <Download className="h-5 w-5 mr-2" /> Export PDF
             </button>
           </div>
         </div>
@@ -163,114 +193,101 @@ const ResultsSection = ({ goToSetup }) => {
         {isLoading ? (
           <div className="flex flex-col items-center py-12">
             <Loader2 className="h-10 w-10 animate-spin text-purple-400" />
-            <p className="mt-4 text-gray-300">Analyzing responses...</p>
+            <p className="mt-4 text-gray-300">
+              Analyzing your interview responses...
+            </p>
           </div>
         ) : (
-          <div className="space-y-6">
+          <div className="space-y-8">
             {/* Scores Section */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-purple-300">Overall Score</h3>
-                <div className="w-full bg-gray-600 rounded-full h-4 mt-2">
+              <div className="p-5 bg-gray-700 rounded-xl border border-gray-600 shadow-md">
+                <h3 className="text-lg font-semibold text-purple-300 mb-3">
+                  Overall Score
+                </h3>
+                <div className="w-full bg-gray-600 rounded-full h-4">
                   <div
                     className="bg-purple-500 h-4 rounded-full transition-all duration-500"
                     style={{ width: `${results.scores.overall}%` }}
                   ></div>
                 </div>
-                <p className="text-sm text-gray-300 mt-1">{results.scores.overall}/100</p>
-                <p className="text-xs text-gray-400">Your performance is above average.</p>
+                <div className="flex justify-between mt-2">
+                  <p className="text-lg font-bold text-purple-300">
+                    {results.scores.overall}
+                  </p>
+                  <p className="text-sm text-gray-400">out of 100</p>
+                </div>
               </div>
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-green-300">Technical Skills</h3>
-                <div className="w-full bg-gray-600 rounded-full h-4 mt-2">
+              <div className="p-5 bg-gray-700 rounded-xl border border-gray-600 shadow-md">
+                <h3 className="text-lg font-semibold text-green-300 mb-3">
+                  Technical Skills
+                </h3>
+                <div className="w-full bg-gray-600 rounded-full h-4">
                   <div
                     className="bg-green-500 h-4 rounded-full transition-all duration-500"
                     style={{ width: `${results.scores.technical}%` }}
                   ></div>
                 </div>
-                <p className="text-sm text-gray-300 mt-1">{results.scores.technical}/100</p>
-                <p className="text-xs text-gray-400">Excellent technical knowledge.</p>
+                <div className="flex justify-between mt-2">
+                  <p className="text-lg font-bold text-green-300">
+                    {results.scores.technical}
+                  </p>
+                  <p className="text-sm text-gray-400">out of 100</p>
+                </div>
               </div>
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-yellow-300">Communication</h3>
-                <div className="w-full bg-gray-600 rounded-full h-4 mt-2">
+              <div className="p-5 bg-gray-700 rounded-xl border border-gray-600 shadow-md">
+                <h3 className="text-lg font-semibold text-cyan-300 mb-3">
+                  Communication
+                </h3>
+                <div className="w-full bg-gray-600 rounded-full h-4">
                   <div
-                    className="bg-yellow-500 h-4 rounded-full transition-all duration-500"
+                    className="bg-cyan-500 h-4 rounded-full transition-all duration-500"
                     style={{ width: `${results.scores.communication}%` }}
                   ></div>
                 </div>
-                <p className="text-sm text-gray-300 mt-1">{results.scores.communication}/100</p>
-                <p className="text-xs text-gray-400">Good clarity, could improve conciseness.</p>
-              </div>
-            </div>
-
-            {/* Key Insights */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-purple-300 flex items-center">
-                  <span className="mr-2">🔑</span> Key Insights
-                </h3>
-                <ul className="mt-2 space-y-1 text-gray-300">
-                  {results.analyses.map((a, i) => (
-                    <li key={i} className="text-sm">✔ {a.strengths}</li>
-                  )).slice(0, 3)}
-                </ul>
-              </div>
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-yellow-300 flex items-center">
-                  <span className="mr-2">⚠️</span> Areas for Improvement
-                </h3>
-                <ul className="mt-2 space-y-1 text-gray-300">
-                  {results.analyses.map((a, i) => (
-                    <li key={i} className="text-sm">➜ {a.weaknesses}</li>
-                  )).slice(0, 3)}
-                </ul>
+                <div className="flex justify-between mt-2">
+                  <p className="text-lg font-bold text-cyan-300">
+                    {results.scores.communication}
+                  </p>
+                  <p className="text-sm text-gray-400">out of 100</p>
+                </div>
               </div>
             </div>
 
             {/* AI Summary */}
             {results.summary && (
-              <div className="p-4 bg-gradient-to-r from-purple-900 to-gray-800 rounded-lg border border-purple-700">
-                <h3 className="text-lg font-semibold text-purple-300 flex items-center">
-                  <span className="mr-2">⚡</span> AI Summary Feedback
+              <div className="p-5 bg-gradient-to-r from-purple-900 to-gray-800 rounded-xl border border-purple-700 shadow-md">
+                <h3 className="text-lg font-semibold text-purple-300 mb-2">
+                  Executive Summary
                 </h3>
-                <p className="mt-2 text-gray-200 text-sm">{results.summary}</p>
-              </div>
-            )}
-
-            {/* Repeated Words */}
-            {results.repeatedWords.length > 0 && (
-              <div className="p-4 bg-gray-700 rounded-lg border border-gray-600">
-                <h3 className="text-lg font-semibold text-green-300">Repeated Words</h3>
-                <p className="mt-2 text-gray-300">Common words: {results.repeatedWords.join(", ")}</p>
-                <p className="text-xs text-gray-400 mt-1">Tip: Vary word choice for clarity.</p>
+                <p className="text-gray-200">{results.summary}</p>
               </div>
             )}
 
             {/* Question Analysis */}
             <div className="space-y-4">
+              <h3 className="text-xl font-semibold text-purple-400 border-b border-gray-700 pb-2">
+                Question Analysis
+              </h3>
               {results.analyses.map((analysis, index) => (
-                <div key={index} className="p-4 bg-gray-700 rounded-lg border border-gray-600 shadow-md hover:shadow-lg transition-shadow duration-300">
-                  <h3 className="text-md font-semibold text-gray-100 mb-2">{analysis.question}</h3>
-                  <div className="space-y-3">
-                    <div>
-                      <p className="text-sm font-medium text-gray-400">Your Answer</p>
-                      <p className="text-gray-200">{analysis.answer}</p>
+                <div
+                  key={index}
+                  className="p-5 bg-gray-700 rounded-xl border border-gray-600 shadow-md hover:shadow-lg transition-shadow duration-300"
+                >
+                  <div className="mb-3">
+                    <h4 className="text-md font-semibold text-gray-100">
+                      Q {index + 1}. {analysis.question}
+                    </h4>
+                    <div className="mt-2 p-3 bg-gray-800 rounded-lg text-gray-300 border-l-4 border-gray-500">
+                      <b>A: </b>
+                      {analysis.answer}
                     </div>
-                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                      <div className="p-3 bg-green-900/50 rounded-lg">
-                        <p className="text-sm font-medium text-green-300">Strengths</p>
-                        <p className="text-gray-200">{analysis.strengths}</p>
-                      </div>
-                      <div className="p-3 bg-yellow-900/50 rounded-lg">
-                        <p className="text-sm font-medium text-yellow-300">Weaknesses</p>
-                        <p className="text-gray-200">{analysis.weaknesses}</p>
-                      </div>
-                      <div className="p-3 bg-purple-900/50 rounded-lg">
-                        <p className="text-sm font-medium text-purple-300">Suggestion</p>
-                        <p className="text-gray-200">{analysis.suggestion}</p>
-                      </div>
-                    </div>
+                  </div>
+                  <div className="mt-3 p-3 bg-purple-900/40 rounded-lg border-l-4 border-purple-500">
+                    <p className="text-sm font-medium text-purple-300 mb-1">
+                      Improvement Suggestion
+                    </p>
+                    <p className="text-gray-300">{analysis.improvement}</p>
                   </div>
                 </div>
               ))}
@@ -279,21 +296,21 @@ const ResultsSection = ({ goToSetup }) => {
         )}
 
         {/* Action Buttons */}
-        <div className="flex justify-between items-center gap-2">
+        <div className="flex justify-between items-center gap-2 pt-4 border-t border-gray-700">
           <button
             onClick={retryAnalysis}
             className="flex items-center px-4 py-2 bg-yellow-600 text-white rounded-lg hover:bg-yellow-700 transition-all duration-200 shadow-lg hover:shadow-yellow-500/50 disabled:opacity-50"
             disabled={isLoading}
             title="Retry Analysis"
           >
-            <RotateCcw className="h-5 w-5 mr-2" /> Retry
+            <RotateCcw className="h-5 w-5 mr-2" /> Retry Analysis
           </button>
           <button
             onClick={goToSetup}
             className="flex items-center px-4 py-2 bg-gray-600 text-white rounded-lg hover:bg-gray-700 transition-all duration-200 shadow-lg hover:shadow-gray-500/50"
             title="Back to Setup"
           >
-            <ArrowLeft className="h-5 w-5 mr-2" /> Back
+            <ArrowLeft className="h-5 w-5 mr-2" /> Back to Setup
           </button>
         </div>
       </div>

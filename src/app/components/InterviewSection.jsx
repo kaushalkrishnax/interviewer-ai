@@ -7,7 +7,8 @@ import {
   RefreshCw,
   User,
   Bot,
-  Send,
+  Square,
+  Send
 } from "lucide-react";
 import { useAppContext } from "../context/AppContext";
 
@@ -18,7 +19,9 @@ const DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak";
 const DEEPGRAM_STT_URL =
   "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true";
 const RECORDING_MIMETYPE = "audio/webm";
+const SILENCE_TIMEOUT_MS = 8000;
 const NO_RESPONSE_TIMEOUT_MS = 10000;
+const MIN_RECORDING_DURATION_MS = 20000;
 
 const InterviewSection = ({ handleFinishInterview }) => {
   const {
@@ -36,12 +39,15 @@ const InterviewSection = ({ handleFinishInterview }) => {
   const [isProcessing, setIsProcessing] = useState(false);
   const [transcript, setTranscript] = useState("");
   const [error, setError] = useState(null);
+  const [showRetry, setShowRetry] = useState(false);
   const mediaRecorderRef = useRef(null);
   const audioChunksRef = useRef([]);
   const streamRef = useRef(null);
   const audioRef = useRef(null);
+  const silenceTimerRef = useRef(null);
   const noResponseTimerRef = useRef(null);
   const lastSpokenQuestionRef = useRef(null);
+  const recordingStartTimeRef = useRef(null);
 
   useEffect(() => {
     if (
@@ -52,6 +58,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
     ) {
       setError(null);
       setTranscript("");
+      setShowRetry(false);
       lastSpokenQuestionRef.current = currentQuestion;
       speakQuestion(currentQuestion);
     }
@@ -62,12 +69,13 @@ const InterviewSection = ({ handleFinishInterview }) => {
       stopRecording();
       if (streamRef.current) {
         streamRef.current.getTracks().forEach((track) => track.stop());
-        streamRefBeamRef.current = null;
+        streamRef.current = null;
       }
       if (audioRef.current) {
         audioRef.current.pause();
         audioRef.current = null;
       }
+      clearTimeout(silenceTimerRef.current);
       clearTimeout(noResponseTimerRef.current);
     };
   }, []);
@@ -85,7 +93,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
           method: "POST",
           headers: {
             Authorization: `Token ${DEEPGRAM_API_KEY}`,
-            " Ditent-Type": "application/json",
+            "Content-Type": "application/json",
           },
           body: JSON.stringify({ text }),
         }
@@ -101,6 +109,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
       audioRef.current.onended = () => {
         setIsSpeaking(false);
         URL.revokeObjectURL(audioUrl);
+        // No longer auto-starting recording here
       };
       await audioRef.current.play();
     } catch (err) {
@@ -113,6 +122,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
 
   const startRecording = async () => {
     setError(null);
+    setShowRetry(false);
     clearTimeout(noResponseTimerRef.current);
 
     try {
@@ -127,21 +137,46 @@ const InterviewSection = ({ handleFinishInterview }) => {
       mediaRecorderRef.current.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
+          clearTimeout(silenceTimerRef.current);
+          if (
+            Date.now() - recordingStartTimeRef.current >=
+            MIN_RECORDING_DURATION_MS
+          ) {
+            silenceTimerRef.current = setTimeout(
+              stopRecording,
+              SILENCE_TIMEOUT_MS
+            );
+          }
         }
       };
 
       mediaRecorderRef.current.onstart = () => {
         setIsRecording(true);
+        recordingStartTimeRef.current = Date.now();
         noResponseTimerRef.current = setTimeout(() => {
           stopRecording();
-          setError("No response detected. Please try again.");
+          setShowRetry(true);
+          setError("No response detected. Retry the question?");
           setIsRecording(false);
         }, NO_RESPONSE_TIMEOUT_MS);
       };
 
       mediaRecorderRef.current.onstop = async () => {
         setIsRecording(false);
+        clearTimeout(silenceTimerRef.current);
         clearTimeout(noResponseTimerRef.current);
+
+        if (!audioChunksRef.current.length) {
+          setTranscript("");
+          await processResponse("");
+          return;
+        }
+
+        const audioBlob = new Blob(audioChunksRef.current, {
+          type: RECORDING_MIMETYPE,
+        });
+        audioChunksRef.current = [];
+        await transcribeAudio(audioBlob);
       };
 
       mediaRecorderRef.current.onerror = () => {
@@ -165,20 +200,7 @@ const InterviewSection = ({ handleFinishInterview }) => {
     if (mediaRecorderRef.current?.state === "recording") {
       mediaRecorderRef.current.stop();
     }
-  };
-
-  const submitRecording = async () => {
-    if (!audioChunksRef.current.length) {
-      setTranscript("");
-      await processResponse("");
-      return;
-    }
-
-    const audioBlob = new Blob(audioChunksRef.current, {
-      type: RECORDING_MIMETYPE,
-    });
-    audioChunksRef.current = [];
-    await transcribeAudio(audioBlob);
+    clearTimeout(silenceTimerRef.current);
   };
 
   const transcribeAudio = async (audioBlob) => {
@@ -249,6 +271,17 @@ const InterviewSection = ({ handleFinishInterview }) => {
     }
   };
 
+  const retryQuestion = () => {
+    setError(null);
+    setShowRetry(false);
+    setTranscript("");
+    stopRecording();
+    clearTimeout(noResponseTimerRef.current);
+    clearTimeout(silenceTimerRef.current);
+    setIsRecording(false);
+    if (currentQuestion) speakQuestion(currentQuestion);
+  };
+
   const handleEndInterview = () => {
     stopRecording();
     if (streamRef.current) {
@@ -259,110 +292,158 @@ const InterviewSection = ({ handleFinishInterview }) => {
       audioRef.current.pause();
       audioRef.current = null;
     }
+    clearTimeout(silenceTimerRef.current);
     clearTimeout(noResponseTimerRef.current);
     handleFinishInterview();
   };
 
+  const handleManualSubmit = () => {
+    stopRecording();
+  };
+
   return (
-    <section className="min-h-screen p-6 flex flex-col items-center justify-center bg-gray-100">
-      <div className="w-full max-w-3xl bg-white rounded-xl shadow-xl p-8 space-y-6">
-        <div className="flex justify-between items-center">
-          <div className="flex items-center space-x-3">
-            <Bot className="h-8 w-8 text-blue-500" />
-            <h2 className="text-2xl font-bold text-gray-800">AI Interview</h2>
+    <section className="min-h-screen p-4 lg:p-8 flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 text-white animate-gradient-bg">
+      <div className="w-full max-w-4xl bg-gray-900/90 backdrop-blur-xl border border-purple-500/40 rounded-2xl shadow-2xl p-6 md:p-8 flex flex-col space-y-6 transform transition-all duration-500">
+        {/* Header Section */}
+        <div className="flex flex-col sm:flex-row justify-between items-center gap-4 border-b border-purple-500/30 pb-4">
+          <h2 className="text-2xl md:text-3xl font-bold text-purple-300 flex items-center">
+            <Bot className="h-6 w-6 mr-3 text-purple-400" />
+            AI Interview Assistant
+          </h2>
+          <div className="flex items-center gap-3">
+            <div className="px-3 py-1 bg-purple-900/60 rounded-full text-xs font-medium text-purple-200">
+              Question {questions.length > 0 ? questions.indexOf(currentQuestion) + 1 : 1}/{questions.length || 1}
+            </div>
+            <button
+              onClick={handleEndInterview}
+              className="flex items-center px-4 py-2 bg-red-600 hover:bg-red-700 text-white text-sm font-semibold rounded-lg transition-all duration-300 shadow-md hover:shadow-lg disabled:opacity-50"
+              disabled={isProcessing}
+              aria-label="End Interview"
+            >
+              <Power className="h-4 w-4 mr-2" />
+              End Interview
+            </button>
           </div>
-          <button
-            onClick={handleEndInterview}
-            className="flex items-center px-4 py-2 bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors disabled:opacity-50"
-            disabled={isProcessing}
-          >
-            <Power className="h-5 w-5 mr-2" />
-            End Interview
-          </button>
         </div>
 
-        <div className="text-center text-gray-600">
-          <p>
-            Question{" "}
-            {questions.length > 0 ? questions.indexOf(currentQuestion) + 1 : 1} of{" "}
-            {questions.length || 1}
-          </p>
-        </div>
-
-        <div className="flex justify-center space-x-4">
-          {isProcessing && !isRecording && (
-            <div className="flex items-center text-gray-600">
-              <Loader2 className="h-5 w-5 mr-2 animate-spin text-blue-500" />
+        {/* Status Indicator */}
+        <div className="text-center h-8 flex items-center justify-center">
+          {isProcessing && (
+            <div className="flex items-center text-sm text-purple-200 animate-pulse">
+              <Loader2 className="h-5 w-5 mr-2 animate-spin text-purple-400" />
               Processing...
             </div>
           )}
           {isSpeaking && (
-            <div className="flex items-center text-gray-600">
-              <Bot className="h-5 w-5 mr-2 text-blue-500" />
-              Speaking...
+            <div className="flex items-center text-sm text-blue-300 animate-pulse">
+              <Bot className="h-5 w-5 mr-2" />
+              Interviewer Speaking...
             </div>
           )}
           {isRecording && (
-            <div className="flex items-center text-green-600">
-              <Mic className="h-5 w-5 mr-2 animate-pulse text-red-500" />
-              Recording...
+            <div className="flex items-center text-sm text-red-400 animate-pulse">
+              <Mic className="h-5 w-5 mr-2 text-red-500" />
+              Recording Your Answer...
             </div>
           )}
         </div>
 
-        <div className="p-4 bg-gray-50 rounded-lg border border-gray-200">
-          <div className="flex items-start space-x-3">
-            <Bot className="h-6 w-6 text-blue-500 flex-shrink-0" />
-            <p className="text-lg text-gray-800">
-              {currentQuestion || "Initializing interview..."}
-            </p>
-          </div>
-        </div>
-
-        <div className="p-4 bg-gray-50 rounded-lg border border-green-200">
-          <div className="flex items-start space-x-3">
-            <User className="h-6 w-6 text-green-500 flex-shrink-0" />
-            <p className="text-lg text-gray-700">
-              {transcript || (
-                <span className="text-gray-500">Your answer will appear here</span>
+        {/* Question Display */}
+        <div className="p-6 bg-gray-800/80 border border-purple-600/40 rounded-xl shadow-lg transform transition-all duration-300 hover:shadow-xl">
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-purple-700/60 flex items-center justify-center flex-shrink-0">
+              <Bot size={20} className="text-purple-200" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-purple-300 mb-2">Interviewer Question:</h3>
+              <p className="text-lg text-gray-100 font-medium leading-relaxed">
+                {currentQuestion || "Initializing interview..."}
+              </p>
+              {!isSpeaking && currentQuestion && (
+                <button 
+                  onClick={() => speakQuestion(currentQuestion)}
+                  className="mt-3 text-xs flex items-center text-purple-400 hover:text-purple-300"
+                >
+                  <RefreshCw className="h-3 w-3 mr-1" /> Replay question
+                </button>
               )}
-            </p>
+            </div>
           </div>
         </div>
 
-        <div className="flex justify-center space-x-4">
-          <button
-            onClick={startRecording}
-            className="flex items-center px-4 py-2 bg-blue-500 text-white rounded-lg hover:bg-blue-600 transition-colors disabled:opacity-50"
-            disabled={isRecording || isSpeaking || isProcessing}
-          >
-            <Mic className="h-5 w-5 mr-2" />
-            Start Recording
-          </button>
-          <button
-            onClick={stopRecording}
-            className="flex items-center px-4 py-2 bg-orange-500 text-white rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-50"
-            disabled={!isRecording}
-          >
-            <Mic className="h-5 w-5 mr-2" />
-            Stop Recording
-          </button>
-          <button
-            onClick={submitRecording}
-            className="flex items-center px-4 py-2 bg-green-500 text-white rounded-lg hover:bg-green-600 transition-colors disabled:opacity-50"
-            disabled={isRecording || isSpeaking || isProcessing}
-          >
-            <Send className="h-5 w-5 mr-2" />
-            Submit Answer
-          </button>
+        {/* Answer Display */}
+        <div 
+          className={`p-6 bg-gray-800/60 border rounded-xl shadow-lg transition-all duration-300 ${
+            isRecording ? "border-red-500/50 shadow-red-900/20" : "border-green-600/40"
+          }`}
+        >
+          <div className="flex items-start gap-4">
+            <div className="w-10 h-10 rounded-full bg-green-700/60 flex items-center justify-center flex-shrink-0">
+              <User size={20} className="text-green-200" />
+            </div>
+            <div className="flex-1">
+              <h3 className="text-sm font-semibold text-green-300 mb-2">Your Answer:</h3>
+              <p className="text-lg text-gray-200 leading-relaxed min-h-[80px]">
+                {transcript ? (
+                  transcript
+                ) : (
+                  <span className="text-gray-400 italic">
+                    {isRecording ? "Recording your answer..." : "Click 'Record Answer' to start recording"}
+                  </span>
+                )}
+              </p>
+            </div>
+          </div>
         </div>
 
+        {/* Controls Section */}
+        <div className="flex justify-center gap-4">
+          {!isRecording ? (
+            <button
+              onClick={startRecording}
+              className="w-40 rounded-full bg-gradient-to-r from-blue-400 to-blue-600 hover:from-blue-500 hover:to-blue-700 text-white font-semibold py-3 px-6 shadow-md focus:outline-none focus:ring-2 focus:ring-blue-400 disabled:opacity-50 transform hover:scale-105 transition-all duration-300 flex items-center justify-center"
+              disabled={isSpeaking || isProcessing}
+            >
+              <Mic className="mr-2" size={40} />
+              Record Answer
+            </button>
+          ) : (
+            <button
+              onClick={handleManualSubmit}
+              className="w-40 rounded-full bg-gradient-to-r from-green-400 to-green-600 hover:from-green-500 hover:to-green-700 text-white font-semibold py-3 px-6 shadow-md focus:outline-none focus:ring-2 focus:ring-green-400 disabled:opacity-50 transform hover:scale-105 transition-all duration-300 flex items-center justify-center"
+              type="submit"
+            >
+              <Square className="mr-2" size={40} />
+              Stop & Submit
+            </button>
+          )}
+        </div>
+
+        {/* Error Display */}
         {error && (
-          <div className="p-3 bg-red-100 border border-red-300 rounded-lg flex items-center text-red-700">
-            <AlertCircle className="h-5 w-5 mr-2" />
-            {error}
+          <div
+            className="p-4 bg-red-900/40 border border-red-600/50 rounded-xl text-sm text-red-200 flex items-center shadow-md"
+            role="alert"
+          >
+            <AlertCircle className="h-6 w-6 mr-3 text-red-400 flex-shrink-0" />
+            <div>
+              {error}
+              {showRetry && (
+                <button
+                  onClick={retryQuestion}
+                  className="ml-3 underline text-red-300 hover:text-red-200"
+                >
+                  Retry
+                </button>
+              )}
+            </div>
           </div>
         )}
+
+        {/* Tips */}
+        <div className="text-center text-xs text-gray-400 pt-2">
+          <p>Click "Record Answer" to start recording and "Stop & Submit" when finished.</p>
+        </div>
       </div>
     </section>
   );
