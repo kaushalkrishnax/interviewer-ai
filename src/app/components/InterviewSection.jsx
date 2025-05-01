@@ -19,9 +19,9 @@ const DEEPGRAM_TTS_URL = "https://api.deepgram.com/v1/speak";
 const DEEPGRAM_STT_URL =
   "https://api.deepgram.com/v1/listen?model=nova-2&language=en-US&smart_format=true";
 const RECORDING_MIMETYPE = "audio/webm";
-const SILENCE_TIMEOUT_MS = 8000;
-const NO_RESPONSE_TIMEOUT_MS = 10000;
-const MIN_RECORDING_DURATION_MS = 20000;
+const SILENCE_TIMEOUT_MS = 10000;
+const NO_RESPONSE_TIMEOUT_MS = 50000;
+const MIN_RECORDING_DURATION_MS = 50000;
 
 const InterviewSection = ({ handleFinishInterview }) => {
   const {

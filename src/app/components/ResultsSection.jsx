@@ -276,7 +276,7 @@ const ResultsSection = ({ goToSetup }) => {
                 >
                   <div className="mb-3">
                     <h4 className="text-md font-semibold text-gray-100">
-                      Q {index + 1}. {analysis.question}
+                      {analysis.question}
                     </h4>
                     <div className="mt-2 p-3 bg-gray-800 rounded-lg text-gray-300 border-l-4 border-gray-500">
                       <b>A: </b>
