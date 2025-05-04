@@ -200,21 +200,21 @@ const Home = () => {
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-gray-900 via-indigo-950 to-black text-gray-100 flex animate-gradient-bg">
-      <Sidebar
+      {/* <Sidebar
         activeSection={activeSection}
         setActiveSection={setActiveSection}
         hasResults={hasResults}
         resetInterview={() => setShowResetConfirm(true)}
         isCollapsed={isSidebarCollapsed}
         toggleSidebar={toggleSidebar}
-      />
+      /> */}
 
       <div className="flex flex-col flex-1 min-w-0">
         <header className="bg-gray-800/70 backdrop-blur-sm p-4 flex items-center justify-between lg:hidden border-b border-indigo-500/30 sticky top-0 z-20">
           <div className="flex items-center">
             <FileText className="h-6 w-6 mr-2 text-indigo-400 animate-pulse" />
             <h1 className="text-xl font-bold text-indigo-300">
-              InterviewAI - {progressSteps.find((s) => s.active)?.label}
+              Interviewer AI - {progressSteps.find((s) => s.active)?.label}
             </h1>
           </div>
           <button

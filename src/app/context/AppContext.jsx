@@ -10,7 +10,7 @@ export const AppProvider = ({ children }) => {
   const [formData, setFormData] = useState({
     instructions: "",
     position: "",
-    interviewer: "aura-asteria-en",
+    interviewer: { avatar_id: "Annie_expressive2_public", voice_id: "c8e176c17f814004885fd590e03ff99f" },
     resume: "",
   });
   const [questions, setQuestions] = useState([]);
